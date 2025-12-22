@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'converter-api'
+    static_configs:
+      - targets: ['api:8080']
+    metrics_path: /metrics
+
+  - job_name: 'converter-worker'
+    static_configs:
+      - targets: ['worker:8080']
+    metrics_path: /metrics

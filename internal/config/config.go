@@ -1,0 +1,210 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"time"
+)
+
+// Config holds all application configuration
+type Config struct {
+	Database   DatabaseConfig
+	Temporal   TemporalConfig
+	S3         S3Config
+	Worker     WorkerConfig
+	API        APIConfig
+	FFmpeg     FFmpegConfig
+	Thumbnails ThumbnailsConfig
+	HLS        HLSConfig
+	Retry      RetryConfig
+	Log        LogConfig
+}
+
+// DatabaseConfig holds database configuration
+type DatabaseConfig struct {
+	URL             string
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+}
+
+// TemporalConfig holds Temporal configuration
+type TemporalConfig struct {
+	Address   string
+	Namespace string
+	TaskQueue string
+}
+
+// S3Config holds S3 configuration
+type S3Config struct {
+	Endpoint     string
+	Region       string
+	AccessKey    string
+	SecretKey    string
+	BucketOutput string
+	UseSSL       bool
+}
+
+// WorkerConfig holds worker configuration
+type WorkerConfig struct {
+	WorkdirRoot       string
+	MaxParallelJobs   int
+	MaxParallelFFmpeg int
+	MaxParallelUploads int
+	EnableGPU         bool
+}
+
+// APIConfig holds API configuration
+type APIConfig struct {
+	Port         int
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+
+// FFmpegConfig holds FFmpeg configuration
+type FFmpegConfig struct {
+	BinaryPath      string
+	FFprobePath     string
+	ProcessTimeout  time.Duration
+}
+
+// ThumbnailsConfig holds thumbnail generation defaults
+type ThumbnailsConfig struct {
+	MaxFrames int
+}
+
+// HLSConfig holds HLS generation defaults
+type HLSConfig struct {
+	SegmentDurationSec int
+}
+
+// RetryConfig holds retry policy configuration
+type RetryConfig struct {
+	Count        int
+	BaseDelayMs  int
+	MaxDelayMs   int
+}
+
+// LogConfig holds logging configuration
+type LogConfig struct {
+	Level  string
+	Format string
+}
+
+// Load loads configuration from environment variables
+func Load() (*Config, error) {
+	cfg := &Config{
+		Database: DatabaseConfig{
+			URL:             getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/converter?sslmode=disable"),
+			MaxOpenConns:    getEnvInt("DATABASE_MAX_OPEN_CONNS", 25),
+			MaxIdleConns:    getEnvInt("DATABASE_MAX_IDLE_CONNS", 5),
+			ConnMaxLifetime: getEnvDuration("DATABASE_CONN_MAX_LIFETIME", 5*time.Minute),
+		},
+		Temporal: TemporalConfig{
+			Address:   getEnv("TEMPORAL_ADDRESS", "localhost:7233"),
+			Namespace: getEnv("TEMPORAL_NAMESPACE", "default"),
+			TaskQueue: getEnv("TEMPORAL_TASK_QUEUE", "video-conversion"),
+		},
+		S3: S3Config{
+			Endpoint:     getEnv("S3_ENDPOINT", "http://localhost:9000"),
+			Region:       getEnv("S3_REGION", "us-east-1"),
+			AccessKey:    getEnv("S3_ACCESS_KEY", ""),
+			SecretKey:    getEnv("S3_SECRET_KEY", ""),
+			BucketOutput: getEnv("S3_BUCKET_OUTPUT", "converted"),
+			UseSSL:       getEnvBool("S3_USE_SSL", false),
+		},
+		Worker: WorkerConfig{
+			WorkdirRoot:        getEnv("WORKDIR_ROOT", "/work"),
+			MaxParallelJobs:    getEnvInt("MAX_PARALLEL_JOBS", 2),
+			MaxParallelFFmpeg:  getEnvInt("MAX_PARALLEL_FFMPEG", 4),
+			MaxParallelUploads: getEnvInt("MAX_PARALLEL_UPLOADS", 10),
+			EnableGPU:          getEnvBool("ENABLE_GPU", true),
+		},
+		API: APIConfig{
+			Port:         getEnvInt("API_PORT", 8080),
+			ReadTimeout:  getEnvDuration("API_READ_TIMEOUT", 30*time.Second),
+			WriteTimeout: getEnvDuration("API_WRITE_TIMEOUT", 30*time.Second),
+		},
+		FFmpeg: FFmpegConfig{
+			BinaryPath:     getEnv("FFMPEG_PATH", "ffmpeg"),
+			FFprobePath:    getEnv("FFPROBE_PATH", "ffprobe"),
+			ProcessTimeout: getEnvDuration("FFMPEG_PROCESS_TIMEOUT", 6*time.Hour),
+		},
+		Thumbnails: ThumbnailsConfig{
+			MaxFrames: getEnvInt("THUMB_MAX_FRAMES", 200),
+		},
+		HLS: HLSConfig{
+			SegmentDurationSec: getEnvInt("HLS_SEGMENT_DURATION_SEC", 4),
+		},
+		Retry: RetryConfig{
+			Count:       getEnvInt("RETRY_COUNT", 3),
+			BaseDelayMs: getEnvInt("RETRY_BASE_DELAY_MS", 1000),
+			MaxDelayMs:  getEnvInt("RETRY_MAX_DELAY_MS", 30000),
+		},
+		Log: LogConfig{
+			Level:  getEnv("LOG_LEVEL", "info"),
+			Format: getEnv("LOG_FORMAT", "json"),
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// Validate validates the configuration
+func (c *Config) Validate() error {
+	if c.S3.AccessKey == "" {
+		return fmt.Errorf("S3_ACCESS_KEY is required")
+	}
+	if c.S3.SecretKey == "" {
+		return fmt.Errorf("S3_SECRET_KEY is required")
+	}
+	if c.S3.BucketOutput == "" {
+		return fmt.Errorf("S3_BUCKET_OUTPUT is required")
+	}
+	if c.Worker.MaxParallelJobs < 1 {
+		return fmt.Errorf("MAX_PARALLEL_JOBS must be at least 1")
+	}
+	if c.Worker.MaxParallelFFmpeg < 1 {
+		return fmt.Errorf("MAX_PARALLEL_FFMPEG must be at least 1")
+	}
+	return nil
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
+	}
+	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if b, err := strconv.ParseBool(value); err == nil {
+			return b
+		}
+	}
+	return defaultValue
+}
+
+func getEnvDuration(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if d, err := time.ParseDuration(value); err == nil {
+			return d
+		}
+	}
+	return defaultValue
+}
