@@ -17,6 +17,7 @@ import (
 	"github.com/tvoe/converter/internal/config"
 	"github.com/tvoe/converter/internal/db"
 	"github.com/tvoe/converter/internal/domain"
+	"github.com/tvoe/converter/internal/drm"
 	"github.com/tvoe/converter/internal/ffmpeg"
 	"github.com/tvoe/converter/internal/metrics"
 	"github.com/tvoe/converter/internal/storage/s3"
@@ -456,9 +457,13 @@ type HLSInput struct {
 // HLSOutput holds HLS segmentation output
 type HLSOutput struct {
 	MasterPlaylistPath string `json:"masterPlaylistPath"`
+	MPDPath            string `json:"mpdPath,omitempty"` // DASH manifest for DRM
 	HLSDir             string `json:"hlsDir"`
 	Encrypted          bool   `json:"encrypted"`
+	DRMEnabled         bool   `json:"drmEnabled"`
+	DRMProvider        string `json:"drmProvider,omitempty"`
 	KeyPath            string `json:"keyPath,omitempty"`
+	KeyID              string `json:"keyId,omitempty"`
 }
 
 // SegmentHLS creates HLS segments
@@ -481,6 +486,63 @@ func (a *Activities) SegmentHLS(ctx context.Context, input HLSInput) (*HLSOutput
 	workspace := ffmpeg.NewWorkspace(a.config.Worker.WorkdirRoot, input.JobID)
 	hlsDir := workspace.HLSPath()
 
+	// Check if DRM is enabled and Shaka Packager is available
+	if a.config.DRM.Enabled {
+		packager := drm.NewPackager(&a.config.DRM)
+		if packager.IsAvailable() {
+			logger.Info("Using DRM packaging with Shaka Packager", zap.String("provider", a.config.DRM.Provider))
+			return a.segmentHLSWithDRM(ctx, input, packager, hlsDir, logger)
+		}
+		logger.Warn("DRM enabled but Shaka Packager not available, falling back to FFmpeg")
+	}
+
+	// Standard FFmpeg HLS (with optional AES-128 encryption)
+	return a.segmentHLSWithFFmpeg(ctx, input, job, hlsDir, logger)
+}
+
+// segmentHLSWithDRM uses Shaka Packager for DRM-protected content
+func (a *Activities) segmentHLSWithDRM(
+	ctx context.Context,
+	input HLSInput,
+	packager *drm.Packager,
+	hlsDir string,
+	logger *zap.Logger,
+) (*HLSOutput, error) {
+	a.updateProgress(ctx, input.JobID, domain.StageHLSSegmentation, 10)
+	activity.RecordHeartbeat(ctx, "starting DRM packaging")
+
+	result, err := packager.Package(ctx, input.OutputPaths, hlsDir, input.JobID)
+	if err != nil {
+		return nil, a.recordError(ctx, input.JobID, domain.StageHLSSegmentation, domain.ErrCodeFFmpegFailed,
+			fmt.Errorf("DRM packaging failed: %w", err))
+	}
+
+	a.updateProgress(ctx, input.JobID, domain.StageHLSSegmentation, 100)
+	logger.Info("DRM packaging complete",
+		zap.String("masterPlaylist", result.MasterPlaylistPath),
+		zap.String("mpdPath", result.MPDPath),
+		zap.String("keyId", result.KeyID),
+	)
+
+	return &HLSOutput{
+		MasterPlaylistPath: result.MasterPlaylistPath,
+		MPDPath:            result.MPDPath,
+		HLSDir:             result.OutputDir,
+		DRMEnabled:         true,
+		DRMProvider:        a.config.DRM.Provider,
+		KeyID:              result.KeyID,
+		Encrypted:          true,
+	}, nil
+}
+
+// segmentHLSWithFFmpeg uses FFmpeg for HLS (with optional AES-128 encryption)
+func (a *Activities) segmentHLSWithFFmpeg(
+	ctx context.Context,
+	input HLSInput,
+	job *domain.Job,
+	hlsDir string,
+	logger *zap.Logger,
+) (*HLSOutput, error) {
 	segmentDuration := job.Profile.HLS.SegmentDurationSec
 	if segmentDuration == 0 {
 		segmentDuration = a.config.HLS.SegmentDurationSec
@@ -498,7 +560,7 @@ func (a *Activities) SegmentHLS(ctx context.Context, input HLSInput) (*HLSOutput
 			return nil, a.recordError(ctx, input.JobID, domain.StageHLSSegmentation, domain.ErrCodeFFmpegFailed,
 				fmt.Errorf("failed to generate encryption: %w", err))
 		}
-		logger.Info("HLS encryption enabled", zap.String("keyURL", encryption.KeyURL))
+		logger.Info("HLS AES-128 encryption enabled", zap.String("keyURL", encryption.KeyURL))
 	}
 
 	qualities := make([]domain.Quality, 0, len(input.OutputPaths))

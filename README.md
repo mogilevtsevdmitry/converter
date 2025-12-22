@@ -372,6 +372,14 @@ GET /metrics
 | `LOG_LEVEL` | `info` | Уровень логирования |
 | `HLS_ENABLE_ENCRYPTION` | `false` | Включить AES-128 шифрование HLS |
 | `HLS_KEY_URL` | - | URL для получения ключа дешифровки |
+| `DRM_ENABLED` | `false` | Включить DRM защиту |
+| `DRM_PROVIDER` | `widevine` | DRM провайдер: widevine, fairplay, playready, all |
+| `SHAKA_PACKAGER_PATH` | `packager` | Путь к Shaka Packager |
+| `DRM_KEY_SERVER_URL` | - | URL сервера лицензий |
+| `DRM_WIDEVINE_KEY_ID` | - | Widevine Key ID (hex) |
+| `DRM_WIDEVINE_KEY` | - | Widevine ключ шифрования (hex) |
+| `DRM_FAIRPLAY_KEY_URL` | - | FairPlay URL ключа |
+| `DRM_PLAYREADY_LA_URL` | - | PlayReady License Acquisition URL |
 
 ---
 
@@ -426,6 +434,152 @@ HLS_KEY_URL=https://api.example.com/keys/{job_id}/encryption.key
 - Для реальной защиты контента ключи должны выдаваться через защищённый API с авторизацией
 - AES-128 — базовый уровень защиты. Для коммерческого контента рекомендуется DRM (Widevine, FairPlay, PlayReady)
 - Ключ хранится в S3 рядом с сегментами. Для защиты настройте приватный доступ к файлу ключа
+
+---
+
+## DRM защита (Widevine, FairPlay, PlayReady)
+
+Сервис поддерживает полноценную DRM защиту контента с использованием Shaka Packager.
+
+### Поддерживаемые провайдеры
+
+| Провайдер | Платформы | Схема шифрования |
+|-----------|-----------|------------------|
+| **Widevine** | Android, Chrome, Firefox, Edge | CENC (AES-CTR) |
+| **FairPlay** | iOS, Safari, Apple TV | CBCS (AES-CBC) |
+| **PlayReady** | Windows, Xbox, Smart TV | CENC (AES-CTR) |
+
+### Требования
+
+1. **Shaka Packager** — должен быть установлен и доступен по пути `SHAKA_PACKAGER_PATH`
+
+```bash
+# Установка на macOS
+brew install shaka-packager
+
+# Установка на Ubuntu
+wget https://github.com/shaka-project/shaka-packager/releases/latest/download/packager-linux-x64
+chmod +x packager-linux-x64
+sudo mv packager-linux-x64 /usr/local/bin/packager
+```
+
+2. **DRM ключи** — получите от вашего DRM провайдера (Widevine, BuyDRM, PallyCon и т.д.)
+
+### Конфигурация
+
+```bash
+# Основные настройки
+DRM_ENABLED=true
+DRM_PROVIDER=widevine  # widevine, fairplay, playready, all
+SHAKA_PACKAGER_PATH=packager
+
+# Widevine
+DRM_WIDEVINE_KEY_ID=your_key_id_hex    # 32 символа hex (16 байт)
+DRM_WIDEVINE_KEY=your_key_hex          # 32 символа hex (16 байт)
+DRM_WIDEVINE_PSSH=base64_pssh_box      # Опционально: PSSH box
+
+# FairPlay (только HLS)
+DRM_FAIRPLAY_KEY_URL=https://your-server.com/fairplay/key
+DRM_FAIRPLAY_CERT_PATH=/path/to/certificate.cer
+DRM_FAIRPLAY_IV=random_iv_hex          # 32 символа hex
+
+# PlayReady (только DASH)
+DRM_PLAYREADY_KEY_ID=your_key_id_hex
+DRM_PLAYREADY_KEY=your_key_hex
+DRM_PLAYREADY_LA_URL=https://license.example.com/playready
+```
+
+### Провайдер "all" (мульти-DRM)
+
+При `DRM_PROVIDER=all` генерируются манифесты, совместимые со всеми провайдерами:
+
+- **HLS** с FairPlay для Apple устройств
+- **DASH** с Widevine и PlayReady для остальных
+
+```bash
+DRM_PROVIDER=all
+# Настройте ключи для каждого провайдера
+```
+
+### API для получения ключей
+
+Для тестирования и разработки доступны эндпоинты:
+
+```bash
+# Получить информацию о DRM ключе (JSON)
+GET /v1/keys/{job_id}
+
+# Ответ:
+{
+  "keyId": "abcd1234...",
+  "provider": "widevine",
+  "laUrl": "https://license.example.com/widevine"
+}
+
+# Получить сырой ключ (для HLS AES-128)
+GET /v1/keys/{job_id}/encryption.key
+# Возвращает 16 байт бинарного ключа
+```
+
+### Выходные файлы
+
+При включённом DRM генерируются:
+
+```
+{job_id}/
+├── master.m3u8         # HLS мастер-плейлист
+├── manifest.mpd        # DASH манифест
+├── 480p_video.mp4      # Зашифрованные видео сегменты
+├── 720p_video.mp4
+├── 1080p_video.mp4
+├── audio.mp4           # Зашифрованный аудио
+├── 480p_video.m3u8     # HLS плейлисты по качествам
+├── 720p_video.m3u8
+├── 1080p_video.m3u8
+└── audio.m3u8
+```
+
+### Пример интеграции с плеером
+
+**Shaka Player (Widevine/PlayReady):**
+
+```javascript
+const player = new shaka.Player(videoElement);
+
+player.configure({
+  drm: {
+    servers: {
+      'com.widevine.alpha': 'https://license.example.com/widevine',
+      'com.microsoft.playready': 'https://license.example.com/playready'
+    }
+  }
+});
+
+await player.load('https://cdn.example.com/videos/{job_id}/manifest.mpd');
+```
+
+**HLS.js с FairPlay:**
+
+```javascript
+const hls = new Hls({
+  emeEnabled: true,
+  drmSystems: {
+    'com.apple.fps.1_0': {
+      licenseUrl: 'https://license.example.com/fairplay',
+      serverCertificateUrl: 'https://license.example.com/fairplay/cert'
+    }
+  }
+});
+
+hls.loadSource('https://cdn.example.com/videos/{job_id}/master.m3u8');
+```
+
+### Важно
+
+- DRM ключи должны храниться в защищённом месте (env variables, secrets manager)
+- Для production используйте настоящий DRM провайдер (Widevine, BuyDRM, PallyCon)
+- Тестовые ключи из API эндпоинта `/v1/keys/` предназначены только для разработки
+- При `DRM_KEY_SERVER_URL=""` API вернёт сам ключ — не делайте этого в production!
 
 ---
 

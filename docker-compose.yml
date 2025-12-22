@@ -48,6 +48,24 @@ services:
       - ENABLE_GPU=false
       - HLS_ENABLE_ENCRYPTION=false
       - HLS_KEY_URL=
+      # DRM Configuration
+      - DRM_ENABLED=false
+      - DRM_PROVIDER=widevine
+      - SHAKA_PACKAGER_PATH=packager
+      - DRM_KEY_SERVER_URL=
+      - DRM_SIGNER_URL=
+      # Widevine
+      - DRM_WIDEVINE_KEY_ID=
+      - DRM_WIDEVINE_KEY=
+      - DRM_WIDEVINE_PSSH=
+      # FairPlay
+      - DRM_FAIRPLAY_KEY_URL=
+      - DRM_FAIRPLAY_CERT_PATH=
+      - DRM_FAIRPLAY_IV=
+      # PlayReady
+      - DRM_PLAYREADY_KEY_ID=
+      - DRM_PLAYREADY_KEY=
+      - DRM_PLAYREADY_LA_URL=
       - LOG_LEVEL=info
     volumes:
       - worker-data:/work

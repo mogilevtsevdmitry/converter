@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -109,6 +110,15 @@ type ArtifactResponse struct {
 	Key       string              `json:"key"`
 	SizeBytes *int64              `json:"sizeBytes,omitempty"`
 	CreatedAt time.Time           `json:"createdAt"`
+}
+
+// DRMKeyResponse represents DRM key response for testing/development
+type DRMKeyResponse struct {
+	KeyID    string `json:"keyId"`
+	Key      string `json:"key,omitempty"`      // Only returned in dev mode
+	Provider string `json:"provider"`
+	LAURL    string `json:"laUrl,omitempty"`    // License Acquisition URL
+	CertURL  string `json:"certUrl,omitempty"`  // Certificate URL (FairPlay)
 }
 
 // CreateJob creates a new conversion job
@@ -401,6 +411,123 @@ func (h *Handler) ReadyCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJSON(w, statusCode, status)
+}
+
+// GetDRMKey returns DRM key information for a job (development/testing only)
+func (h *Handler) GetDRMKey(w http.ResponseWriter, r *http.Request) {
+	jobIDStr := chi.URLParam(r, "jobId")
+	jobID, err := uuid.Parse(jobIDStr)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid job ID")
+		return
+	}
+
+	ctx := r.Context()
+
+	// Verify job exists
+	job, err := h.jobRepo.GetByID(ctx, jobID)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			h.writeError(w, http.StatusNotFound, "job not found")
+			return
+		}
+		h.logger.Error("failed to get job", zap.Error(err))
+		h.writeError(w, http.StatusInternalServerError, "failed to get job")
+		return
+	}
+
+	// Check if DRM is enabled
+	if !h.config.DRM.Enabled {
+		h.writeError(w, http.StatusNotFound, "DRM is not enabled")
+		return
+	}
+
+	// Build response based on DRM provider
+	response := DRMKeyResponse{
+		Provider: h.config.DRM.Provider,
+	}
+
+	// Get key ID based on provider
+	switch h.config.DRM.Provider {
+	case "widevine":
+		response.KeyID = h.config.DRM.WidevineKeyID
+		response.LAURL = h.config.DRM.KeyServerURL
+	case "fairplay":
+		response.KeyID = h.config.DRM.WidevineKeyID // FairPlay uses same key ID format
+		response.CertURL = h.config.DRM.SignerURL
+		response.LAURL = h.config.DRM.FairPlayKeyURL
+	case "playready":
+		response.KeyID = h.config.DRM.PlayReadyKeyID
+		response.LAURL = h.config.DRM.PlayReadyLAURL
+	default:
+		response.KeyID = h.config.DRM.WidevineKeyID
+		if response.KeyID == "" {
+			response.KeyID = h.config.DRM.PlayReadyKeyID
+		}
+	}
+
+	// In development mode (no production key server), include the actual key
+	// WARNING: Never do this in production!
+	if h.config.DRM.KeyServerURL == "" {
+		switch h.config.DRM.Provider {
+		case "widevine":
+			response.Key = h.config.DRM.WidevineKey
+		case "playready":
+			response.Key = h.config.DRM.PlayReadyKey
+		default:
+			response.Key = h.config.DRM.WidevineKey
+			if response.Key == "" {
+				response.Key = h.config.DRM.PlayReadyKey
+			}
+		}
+	}
+
+	h.logger.Info("DRM key requested",
+		zap.String("jobId", job.ID.String()),
+		zap.String("provider", response.Provider),
+	)
+
+	h.writeJSON(w, http.StatusOK, response)
+}
+
+// ServeDRMKeyFile serves the raw encryption key file (for HLS AES-128)
+func (h *Handler) ServeDRMKeyFile(w http.ResponseWriter, r *http.Request) {
+	jobIDStr := chi.URLParam(r, "jobId")
+	_, err := uuid.Parse(jobIDStr)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid job ID")
+		return
+	}
+
+	// For HLS AES-128 encryption, serve the raw key
+	// In production, this should be protected by authentication
+	if !h.config.HLS.EnableEncryption && !h.config.DRM.Enabled {
+		h.writeError(w, http.StatusNotFound, "encryption is not enabled")
+		return
+	}
+
+	// Get key from S3 or generate based on job ID
+	// For now, return the configured key or a derived key
+	var keyBytes []byte
+	if h.config.DRM.WidevineKey != "" {
+		// Decode hex key
+		keyBytes = make([]byte, 16)
+		_, err := hex.Decode(keyBytes, []byte(h.config.DRM.WidevineKey))
+		if err != nil {
+			h.logger.Error("failed to decode key", zap.Error(err))
+			h.writeError(w, http.StatusInternalServerError, "invalid key configuration")
+			return
+		}
+	} else {
+		// Return 404 - key not configured
+		h.writeError(w, http.StatusNotFound, "key not found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", "16")
+	w.WriteHeader(http.StatusOK)
+	w.Write(keyBytes)
 }
 
 func (h *Handler) writeJSON(w http.ResponseWriter, status int, data interface{}) {

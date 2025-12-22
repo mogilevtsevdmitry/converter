@@ -36,6 +36,12 @@ func NewRouter(h *Handler, logger *zap.Logger) *chi.Mux {
 			r.Post("/{jobId}/cancel", h.CancelJob)
 			r.Get("/{jobId}/artifacts", h.GetArtifacts)
 		})
+
+		// DRM key endpoints (for testing/development)
+		r.Route("/keys", func(r chi.Router) {
+			r.Get("/{jobId}", h.GetDRMKey)
+			r.Get("/{jobId}/encryption.key", h.ServeDRMKeyFile)
+		})
 	})
 
 	return r

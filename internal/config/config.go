@@ -17,6 +17,7 @@ type Config struct {
 	FFmpeg     FFmpegConfig
 	Thumbnails ThumbnailsConfig
 	HLS        HLSConfig
+	DRM        DRMConfig
 	Retry      RetryConfig
 	Log        LogConfig
 }
@@ -81,6 +82,27 @@ type HLSConfig struct {
 	KeyURL             string // URL template for key delivery, e.g., "https://example.com/keys/{job_id}/key"
 }
 
+// DRMConfig holds DRM configuration
+type DRMConfig struct {
+	Enabled            bool
+	Provider           string // "widevine", "fairplay", "playready", "all"
+	ShakaPackagerPath  string
+	KeyServerURL       string // License server URL for key requests
+	SignerURL          string // URL for FairPlay certificate
+	// Widevine specific
+	WidevineKeyID      string
+	WidevineKey        string
+	WidevinePSSH       string
+	// FairPlay specific
+	FairPlayKeyURL     string
+	FairPlayCertPath   string
+	FairPlayIV         string
+	// PlayReady specific
+	PlayReadyKeyID     string
+	PlayReadyKey       string
+	PlayReadyLAURL     string // License Acquisition URL
+}
+
 // RetryConfig holds retry policy configuration
 type RetryConfig struct {
 	Count        int
@@ -140,6 +162,25 @@ func Load() (*Config, error) {
 			SegmentDurationSec: getEnvInt("HLS_SEGMENT_DURATION_SEC", 4),
 			EnableEncryption:   getEnvBool("HLS_ENABLE_ENCRYPTION", false),
 			KeyURL:             getEnv("HLS_KEY_URL", ""),
+		},
+		DRM: DRMConfig{
+			Enabled:           getEnvBool("DRM_ENABLED", false),
+			Provider:          getEnv("DRM_PROVIDER", "widevine"), // widevine, fairplay, playready, all
+			ShakaPackagerPath: getEnv("SHAKA_PACKAGER_PATH", "packager"),
+			KeyServerURL:      getEnv("DRM_KEY_SERVER_URL", ""),
+			SignerURL:         getEnv("DRM_SIGNER_URL", ""),
+			// Widevine
+			WidevineKeyID: getEnv("DRM_WIDEVINE_KEY_ID", ""),
+			WidevineKey:   getEnv("DRM_WIDEVINE_KEY", ""),
+			WidevinePSSH:  getEnv("DRM_WIDEVINE_PSSH", ""),
+			// FairPlay
+			FairPlayKeyURL:   getEnv("DRM_FAIRPLAY_KEY_URL", ""),
+			FairPlayCertPath: getEnv("DRM_FAIRPLAY_CERT_PATH", ""),
+			FairPlayIV:       getEnv("DRM_FAIRPLAY_IV", ""),
+			// PlayReady
+			PlayReadyKeyID: getEnv("DRM_PLAYREADY_KEY_ID", ""),
+			PlayReadyKey:   getEnv("DRM_PLAYREADY_KEY", ""),
+			PlayReadyLAURL: getEnv("DRM_PLAYREADY_LA_URL", ""),
 		},
 		Retry: RetryConfig{
 			Count:       getEnvInt("RETRY_COUNT", 3),
