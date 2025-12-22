@@ -77,6 +77,8 @@ type ThumbnailsConfig struct {
 // HLSConfig holds HLS generation defaults
 type HLSConfig struct {
 	SegmentDurationSec int
+	EnableEncryption   bool
+	KeyURL             string // URL template for key delivery, e.g., "https://example.com/keys/{job_id}/key"
 }
 
 // RetryConfig holds retry policy configuration
@@ -136,6 +138,8 @@ func Load() (*Config, error) {
 		},
 		HLS: HLSConfig{
 			SegmentDurationSec: getEnvInt("HLS_SEGMENT_DURATION_SEC", 4),
+			EnableEncryption:   getEnvBool("HLS_ENABLE_ENCRYPTION", false),
+			KeyURL:             getEnv("HLS_KEY_URL", ""),
 		},
 		Retry: RetryConfig{
 			Count:       getEnvInt("RETRY_COUNT", 3),

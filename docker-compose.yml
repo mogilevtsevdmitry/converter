@@ -29,6 +29,8 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile.worker
+    ports:
+      - "9091:9090"
     environment:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/converter?sslmode=disable
       - TEMPORAL_ADDRESS=temporal:7233
@@ -44,6 +46,8 @@ services:
       - MAX_PARALLEL_FFMPEG=4
       - MAX_PARALLEL_UPLOADS=10
       - ENABLE_GPU=false
+      - HLS_ENABLE_ENCRYPTION=false
+      - HLS_KEY_URL=
       - LOG_LEVEL=info
     volumes:
       - worker-data:/work
@@ -156,8 +160,14 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./deploy/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
     restart: unless-stopped

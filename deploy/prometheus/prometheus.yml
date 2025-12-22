@@ -21,5 +21,5 @@ scrape_configs:
 
   - job_name: 'converter-worker'
     static_configs:
-      - targets: ['worker:8080']
+      - targets: ['worker:9090']
     metrics_path: /metrics

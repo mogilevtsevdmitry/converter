@@ -72,6 +72,12 @@ func (a *Activities) ExtractMetadata(ctx context.Context, input ActivityInput) (
 		a.metrics.RecordStageDuration(string(domain.StageMetadataExtraction), time.Since(startTime).Seconds())
 	}()
 
+	// Update job status to RUNNING
+	if err := a.jobRepo.UpdateStatus(ctx, input.JobID, domain.JobStatusRunning); err != nil {
+		logger.Error("failed to update job status", zap.Error(err))
+	}
+	a.metrics.IncrementJobsActive()
+
 	// Update progress
 	if err := a.updateProgress(ctx, input.JobID, domain.StageMetadataExtraction, 0); err != nil {
 		logger.Error("failed to update progress", zap.Error(err))
@@ -450,7 +456,9 @@ type HLSInput struct {
 // HLSOutput holds HLS segmentation output
 type HLSOutput struct {
 	MasterPlaylistPath string `json:"masterPlaylistPath"`
-	HLSDir            string `json:"hlsDir"`
+	HLSDir             string `json:"hlsDir"`
+	Encrypted          bool   `json:"encrypted"`
+	KeyPath            string `json:"keyPath,omitempty"`
 }
 
 // SegmentHLS creates HLS segments
@@ -481,6 +489,18 @@ func (a *Activities) SegmentHLS(ctx context.Context, input HLSInput) (*HLSOutput
 	builder := ffmpeg.NewCommandBuilder(a.config.FFmpeg.BinaryPath, a.config.Worker.EnableGPU)
 	runner := ffmpeg.NewRunner(a.config.FFmpeg.BinaryPath, a.config.FFmpeg.ProcessTimeout)
 
+	// Generate encryption if enabled
+	var encryption *ffmpeg.EncryptionInfo
+	if a.config.HLS.EnableEncryption {
+		var err error
+		encryption, err = ffmpeg.GenerateEncryption(hlsDir, input.JobID, a.config.HLS.KeyURL)
+		if err != nil {
+			return nil, a.recordError(ctx, input.JobID, domain.StageHLSSegmentation, domain.ErrCodeFFmpegFailed,
+				fmt.Errorf("failed to generate encryption: %w", err))
+		}
+		logger.Info("HLS encryption enabled", zap.String("keyURL", encryption.KeyURL))
+	}
+
 	qualities := make([]domain.Quality, 0, len(input.OutputPaths))
 	for q := range input.OutputPaths {
 		qualities = append(qualities, q)
@@ -489,7 +509,7 @@ func (a *Activities) SegmentHLS(ctx context.Context, input HLSInput) (*HLSOutput
 	totalQualities := len(qualities)
 	for i, quality := range qualities {
 		inputPath := input.OutputPaths[quality]
-		cmd := builder.BuildHLSCommand(inputPath, hlsDir, string(quality), segmentDuration)
+		cmd := builder.BuildHLSCommandWithEncryption(inputPath, hlsDir, string(quality), segmentDuration, encryption)
 
 		if err := runner.Run(ctx, cmd.Args, func(p ffmpeg.Progress) {
 			activity.RecordHeartbeat(ctx, i)
@@ -511,12 +531,18 @@ func (a *Activities) SegmentHLS(ctx context.Context, input HLSInput) (*HLSOutput
 	}
 
 	a.updateProgress(ctx, input.JobID, domain.StageHLSSegmentation, 100)
-	logger.Info("HLS segmentation complete", zap.String("masterPlaylist", masterPath))
+	logger.Info("HLS segmentation complete", zap.String("masterPlaylist", masterPath), zap.Bool("encrypted", encryption != nil))
 
-	return &HLSOutput{
+	output := &HLSOutput{
 		MasterPlaylistPath: masterPath,
-		HLSDir:            hlsDir,
-	}, nil
+		HLSDir:             hlsDir,
+		Encrypted:          encryption != nil,
+	}
+	if encryption != nil {
+		output.KeyPath = encryption.KeyPath
+	}
+
+	return output, nil
 }
 
 // UploadInput holds upload input
@@ -626,6 +652,7 @@ func (a *Activities) Cleanup(ctx context.Context, input CleanupInput) error {
 	startTime := time.Now()
 	defer func() {
 		a.metrics.RecordStageDuration(string(domain.StageCleanup), time.Since(startTime).Seconds())
+		a.metrics.DecrementJobsActive()
 	}()
 
 	if err := a.updateProgress(ctx, input.JobID, domain.StageCleanup, 0); err != nil {

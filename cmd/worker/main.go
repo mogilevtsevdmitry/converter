@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"go.uber.org/zap"
@@ -105,6 +107,21 @@ func main() {
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start metrics server
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
+		metricsAddr := ":9090"
+		logger.Info("starting metrics server", zap.String("addr", metricsAddr))
+		if err := http.ListenAndServe(metricsAddr, mux); err != nil {
+			logger.Error("metrics server error", zap.Error(err))
+		}
+	}()
 
 	// Start disk space monitoring
 	go monitorDiskSpace(ctx, cfg.Worker.WorkdirRoot, m, logger)

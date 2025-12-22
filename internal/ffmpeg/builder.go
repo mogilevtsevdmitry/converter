@@ -151,6 +151,17 @@ func (b *CommandBuilder) BuildHLSCommand(
 	quality string,
 	segmentDuration int,
 ) *TranscodeCommand {
+	return b.BuildHLSCommandWithEncryption(inputPath, outputDir, quality, segmentDuration, nil)
+}
+
+// BuildHLSCommandWithEncryption builds HLS segmentation command with optional encryption
+func (b *CommandBuilder) BuildHLSCommandWithEncryption(
+	inputPath string,
+	outputDir string,
+	quality string,
+	segmentDuration int,
+	encryption *EncryptionInfo,
+) *TranscodeCommand {
 	playlistPath := filepath.Join(outputDir, quality+".m3u8")
 	segmentPath := filepath.Join(outputDir, quality+"_%05d.ts")
 
@@ -163,9 +174,19 @@ func (b *CommandBuilder) BuildHLSCommand(
 		"-hls_playlist_type", "vod",
 		"-hls_segment_filename", segmentPath,
 		"-hls_list_size", "0",
+	}
+
+	// Add encryption options if provided
+	if encryption != nil {
+		args = append(args,
+			"-hls_key_info_file", encryption.KeyInfoPath,
+		)
+	}
+
+	args = append(args,
 		"-progress", "pipe:1",
 		playlistPath,
-	}
+	)
 
 	return &TranscodeCommand{
 		Args:       args,
