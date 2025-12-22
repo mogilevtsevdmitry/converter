@@ -78,6 +78,7 @@ services:
         condition: service_started
     restart: unless-stopped
     deploy:
+      replicas: 2
       resources:
         limits:
           cpus: '4'
