@@ -103,6 +103,7 @@ func main() {
 	w.RegisterActivity(acts.SegmentHLS)
 	w.RegisterActivity(acts.UploadArtifacts)
 	w.RegisterActivity(acts.Cleanup)
+	w.RegisterActivity(acts.FinalizeJob)
 
 	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)

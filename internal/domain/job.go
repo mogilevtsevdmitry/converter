@@ -21,6 +21,7 @@ const (
 type Stage string
 
 const (
+	StageUnknown             Stage = "UNKNOWN"
 	StageMetadataExtraction  Stage = "METADATA_EXTRACTION"
 	StageValidation          Stage = "VALIDATION"
 	StageTranscoding         Stage = "TRANSCODING"

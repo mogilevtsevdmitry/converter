@@ -42,6 +42,31 @@ func VideoConversionWorkflow(ctx workflow.Context, input VideoConversionWorkflow
 	}
 	ctx = workflow.WithActivityOptions(ctx, activityOptions)
 
+	// Ensure job status is updated on workflow completion (success or failure)
+	output := &VideoConversionWorkflowOutput{
+		Status: domain.JobStatusRunning,
+	}
+	defer func() {
+		// Use disconnected context for finalization to ensure it runs even if workflow is cancelled
+		finalizeCtx, _ := workflow.NewDisconnectedContext(ctx)
+		finalizeOptions := workflow.ActivityOptions{
+			StartToCloseTimeout: 1 * time.Minute,
+			RetryPolicy: &temporal.RetryPolicy{
+				InitialInterval:    time.Second,
+				BackoffCoefficient: 2.0,
+				MaximumInterval:    10 * time.Second,
+				MaximumAttempts:    5,
+			},
+		}
+		finalizeCtx = workflow.WithActivityOptions(finalizeCtx, finalizeOptions)
+
+		_ = workflow.ExecuteActivity(finalizeCtx, "FinalizeJob", activities.FinalizeJobInput{
+			JobID:  input.JobID,
+			Status: output.Status,
+			Error:  output.Error,
+		}).Get(finalizeCtx, nil)
+	}()
+
 	// Set up signal channel for cancellation
 	cancelChan := workflow.GetSignalChannel(ctx, "cancel")
 
@@ -61,10 +86,6 @@ func VideoConversionWorkflow(ctx workflow.Context, input VideoConversionWorkflow
 			selector.Select(ctx)
 		}
 		return cancelled
-	}
-
-	output := &VideoConversionWorkflowOutput{
-		Status: domain.JobStatusRunning,
 	}
 
 	// Step 1: Extract Metadata
