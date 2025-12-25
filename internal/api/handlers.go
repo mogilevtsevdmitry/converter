@@ -74,23 +74,23 @@ type SourceConfig struct {
 
 // CreateJobResponse represents the response after creating a job
 type CreateJobResponse struct {
-	JobID     uuid.UUID         `json:"jobId"`
-	Status    domain.JobStatus  `json:"status"`
-	CreatedAt time.Time         `json:"createdAt"`
+	JobID     uuid.UUID        `json:"jobId"`
+	Status    domain.JobStatus `json:"status"`
+	CreatedAt time.Time        `json:"createdAt"`
 }
 
 // JobStatusResponse represents job status response
 type JobStatusResponse struct {
-	ID              uuid.UUID         `json:"id"`
-	Status          domain.JobStatus  `json:"status"`
-	CurrentStage    *domain.Stage     `json:"currentStage,omitempty"`
-	StageProgress   int               `json:"stageProgress"`
-	OverallProgress int               `json:"overallProgress"`
-	CreatedAt       time.Time         `json:"createdAt"`
-	StartedAt       *time.Time        `json:"startedAt,omitempty"`
-	UpdatedAt       time.Time         `json:"updatedAt"`
-	FinishedAt      *time.Time        `json:"finishedAt,omitempty"`
-	Errors          []*ErrorResponse  `json:"errors,omitempty"`
+	ID              uuid.UUID        `json:"id"`
+	Status          domain.JobStatus `json:"status"`
+	CurrentStage    *domain.Stage    `json:"currentStage,omitempty"`
+	StageProgress   int              `json:"stageProgress"`
+	OverallProgress int              `json:"overallProgress"`
+	CreatedAt       time.Time        `json:"createdAt"`
+	StartedAt       *time.Time       `json:"startedAt,omitempty"`
+	UpdatedAt       time.Time        `json:"updatedAt"`
+	FinishedAt      *time.Time       `json:"finishedAt,omitempty"`
+	Errors          []*ErrorResponse `json:"errors,omitempty"`
 }
 
 // ErrorResponse represents error response
@@ -115,10 +115,10 @@ type ArtifactResponse struct {
 // DRMKeyResponse represents DRM key response for testing/development
 type DRMKeyResponse struct {
 	KeyID    string `json:"keyId"`
-	Key      string `json:"key,omitempty"`      // Only returned in dev mode
+	Key      string `json:"key,omitempty"` // Only returned in dev mode
 	Provider string `json:"provider"`
-	LAURL    string `json:"laUrl,omitempty"`    // License Acquisition URL
-	CertURL  string `json:"certUrl,omitempty"`  // Certificate URL (FairPlay)
+	LAURL    string `json:"laUrl,omitempty"`   // License Acquisition URL
+	CertURL  string `json:"certUrl,omitempty"` // Certificate URL (FairPlay)
 }
 
 // CreateJob creates a new conversion job
@@ -359,6 +359,7 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 	// Check database
 	if _, err := h.jobRepo.GetByID(ctx, uuid.Nil); err != nil && !errors.Is(err, db.ErrNotFound) {
+		h.logger.Error("database health check failed", zap.Error(err))
 		status["database"] = "unhealthy"
 		status["status"] = "unhealthy"
 	} else {
@@ -367,6 +368,7 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 	// Check S3
 	if err := h.s3Client.Health(ctx); err != nil {
+		h.logger.Error("S3 health check failed", zap.Error(err))
 		status["s3"] = "unhealthy"
 		status["status"] = "unhealthy"
 	} else {

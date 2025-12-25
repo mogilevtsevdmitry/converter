@@ -787,3 +787,45 @@ func (a *Activities) recordError(ctx context.Context, jobID uuid.UUID, stage dom
 	}
 	return err
 }
+
+// FinalizeJobInput holds finalize job input
+type FinalizeJobInput struct {
+	JobID  uuid.UUID        `json:"jobId"`
+	Status domain.JobStatus `json:"status"`
+	Error  string           `json:"error,omitempty"`
+}
+
+// FinalizeJob updates job status to final state (completed/failed/canceled)
+func (a *Activities) FinalizeJob(ctx context.Context, input FinalizeJobInput) error {
+	logger := a.logger.With(
+		zap.String("jobId", input.JobID.String()),
+		zap.String("activity", "FinalizeJob"),
+		zap.String("status", string(input.Status)),
+	)
+
+	if err := a.jobRepo.SetFinished(ctx, input.JobID, input.Status); err != nil {
+		logger.Error("failed to set job finished", zap.Error(err))
+		return fmt.Errorf("failed to finalize job: %w", err)
+	}
+
+	// Record error if job failed
+	if input.Status == domain.JobStatusFailed && input.Error != "" {
+		convErr := domain.NewConversionError(
+			input.JobID,
+			domain.StageUnknown,
+			domain.ErrorClassFatal,
+			domain.ErrCodeWorkflowFailed,
+			input.Error,
+			0,
+		)
+		if err := a.errorRepo.Create(ctx, convErr); err != nil {
+			logger.Warn("failed to record error", zap.Error(err))
+		}
+	}
+
+	// Update metrics
+	a.metrics.IncrementJobsTotal(string(input.Status))
+
+	logger.Info("job finalized", zap.String("finalStatus", string(input.Status)))
+	return nil
+}

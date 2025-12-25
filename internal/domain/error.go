@@ -50,18 +50,19 @@ func (e *ConversionError) WithDetails(key string, value any) *ConversionError {
 
 // Error codes
 const (
-	ErrCodeUnsupportedFormat    = "UNSUPPORTED_FORMAT"
-	ErrCodeInsufficientDisk     = "INSUFFICIENT_DISK"
-	ErrCodeCorruptedFile        = "CORRUPTED_FILE"
-	ErrCodeS3AccessDenied       = "S3_ACCESS_DENIED"
-	ErrCodeS3NotFound           = "S3_NOT_FOUND"
-	ErrCodeS3Timeout            = "S3_TIMEOUT"
-	ErrCodeFFmpegFailed         = "FFMPEG_FAILED"
-	ErrCodeFFprobeFailed        = "FFPROBE_FAILED"
-	ErrCodeNetworkError         = "NETWORK_ERROR"
-	ErrCodeInternalError        = "INTERNAL_ERROR"
-	ErrCodeTimeout              = "TIMEOUT"
-	ErrCodeCanceled             = "CANCELED"
+	ErrCodeUnsupportedFormat = "UNSUPPORTED_FORMAT"
+	ErrCodeInsufficientDisk  = "INSUFFICIENT_DISK"
+	ErrCodeCorruptedFile     = "CORRUPTED_FILE"
+	ErrCodeS3AccessDenied    = "S3_ACCESS_DENIED"
+	ErrCodeS3NotFound        = "S3_NOT_FOUND"
+	ErrCodeS3Timeout         = "S3_TIMEOUT"
+	ErrCodeFFmpegFailed      = "FFMPEG_FAILED"
+	ErrCodeFFprobeFailed     = "FFPROBE_FAILED"
+	ErrCodeNetworkError      = "NETWORK_ERROR"
+	ErrCodeInternalError     = "INTERNAL_ERROR"
+	ErrCodeTimeout           = "TIMEOUT"
+	ErrCodeCanceled          = "CANCELED"
+	ErrCodeWorkflowFailed    = "WORKFLOW_FAILED"
 )
 
 // IsRetryable returns true if the error code is retryable

@@ -103,6 +103,7 @@ func (b *CommandBuilder) buildCPUVideoArgs(quality domain.Quality, params domain
 		"-crf", "23",
 		"-profile:v", "high",
 		"-level", "4.1",
+		"-threads", "4",  // ограничить потоки
 	}
 
 	if quality != domain.QualityOrigin {
