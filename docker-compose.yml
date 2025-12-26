@@ -88,7 +88,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['0']
+              count: all
               capabilities: [gpu]
 
   # Worker GPU 1
@@ -154,7 +154,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['1']
+              count: all
               capabilities: [gpu]
 
   # Worker GPU 2
@@ -220,7 +220,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['2']
+              count: all
               capabilities: [gpu]
 
   # Worker GPU 3
@@ -286,7 +286,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['3']
+              count: all
               capabilities: [gpu]
 
   postgres:
