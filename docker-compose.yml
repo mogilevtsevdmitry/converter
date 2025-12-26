@@ -71,7 +71,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - CUDA_VISIBLE_DEVICES=0
     volumes:
-      - worker-gpu0-data:/work
+      - worker-data:/work
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,7 +137,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - CUDA_VISIBLE_DEVICES=1
     volumes:
-      - worker-gpu1-data:/work
+      - worker-data:/work
     depends_on:
       postgres:
         condition: service_healthy
@@ -203,7 +203,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - CUDA_VISIBLE_DEVICES=2
     volumes:
-      - worker-gpu2-data:/work
+      - worker-data:/work
     depends_on:
       postgres:
         condition: service_healthy
@@ -269,7 +269,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - CUDA_VISIBLE_DEVICES=3
     volumes:
-      - worker-gpu3-data:/work
+      - worker-data:/work
     depends_on:
       postgres:
         condition: service_healthy
@@ -399,9 +399,6 @@ services:
 volumes:
   postgres-data:
   minio-data:
-  worker-gpu0-data:
-  worker-gpu1-data:
-  worker-gpu2-data:
-  worker-gpu3-data:
+  worker-data:
   prometheus-data:
   grafana-data:
