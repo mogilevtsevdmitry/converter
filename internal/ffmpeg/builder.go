@@ -46,11 +46,12 @@ func (b *CommandBuilder) BuildTranscodeCommand(
 		"-y",
 	}
 
-	// Enable GPU decoding when GPU encoding is enabled
+	// Enable GPU decoding with CUVID when GPU encoding is enabled
 	if b.enableGPU {
 		args = append(args,
 			"-hwaccel", "cuda",
 			"-hwaccel_output_format", "cuda",
+			"-c:v", "h264_cuvid",
 		)
 	}
 
@@ -95,11 +96,9 @@ func (b *CommandBuilder) buildGPUVideoArgs(quality domain.Quality, params domain
 	}
 
 	if quality != domain.QualityOrigin {
-		// Use GPU-accelerated scaling (scale_npp) for better performance
-		// Keep frames in CUDA format for nvenc (no format conversion)
-		// -2 means auto-calculate height with even number (required for h264)
-		args = append(args, "-vf", fmt.Sprintf("scale_npp=w=%d:h=-2:interp_algo=super",
-			params.Width))
+		// Use GPU-accelerated scaling with scale_npp (works with CUVID decoder)
+		args = append(args, "-vf", fmt.Sprintf("scale_npp=%d:%d",
+			params.Width, params.Height))
 		args = append(args, "-b:v", params.VideoBitrate)
 		args = append(args, "-maxrate", params.MaxBitrate)
 		args = append(args, "-bufsize", params.BufSize)
@@ -189,11 +188,9 @@ func (b *CommandBuilder) buildH265GPUArgs(quality domain.Quality, params domain.
 		maxBitrate := adjustBitrateForCodec(params.MaxBitrate, domain.VideoCodecH265)
 		bufSize := adjustBitrateForCodec(params.BufSize, domain.VideoCodecH265)
 
-		// Use GPU-accelerated scaling (scale_npp) for better performance
-		// Keep frames in CUDA format for hevc_nvenc (no format conversion)
-		// -2 means auto-calculate height with even number (required for h265)
-		args = append(args, "-vf", fmt.Sprintf("scale_npp=w=%d:h=-2:interp_algo=super",
-			params.Width))
+		// Use GPU-accelerated scaling with scale_npp (works with CUVID decoder)
+		args = append(args, "-vf", fmt.Sprintf("scale_npp=%d:%d",
+			params.Width, params.Height))
 		args = append(args, "-b:v", videoBitrate)
 		args = append(args, "-maxrate", maxBitrate)
 		args = append(args, "-bufsize", bufSize)
@@ -389,11 +386,12 @@ func (b *CommandBuilder) BuildTranscodeCommandForTier(
 		"-y",
 	}
 
-	// Enable GPU decoding when GPU encoding is enabled
+	// Enable GPU decoding with CUVID when GPU encoding is enabled
 	if b.enableGPU {
 		args = append(args,
 			"-hwaccel", "cuda",
 			"-hwaccel_output_format", "cuda",
+			"-c:v", "h264_cuvid",
 		)
 	}
 
