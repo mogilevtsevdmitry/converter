@@ -25,12 +25,13 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  worker:
+  # Worker GPU 0
+  worker-gpu0:
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile.worker
     ports:
-      - "${WORKER_PORT:-9091}:9090"
+      - "9091:9090"
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-converter}?sslmode=disable
       - TEMPORAL_ADDRESS=temporal:${TEMPORAL_PORT:-7233}
@@ -41,40 +42,36 @@ services:
       - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - S3_BUCKET_OUTPUT=${S3_BUCKET_OUTPUT:-converted}
-      - WORKDIR_ROOT=${WORKDIR_ROOT:-/work}
+      - WORKDIR_ROOT=/work
       - MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS:-1}
       - MAX_PARALLEL_FFMPEG=${MAX_PARALLEL_FFMPEG:-1}
       - MAX_PARALLEL_UPLOADS=${MAX_PARALLEL_UPLOADS:-10}
       - ENABLE_GPU=${ENABLE_GPU:-false}
       - HLS_ENABLE_ENCRYPTION=${HLS_ENABLE_ENCRYPTION:-false}
       - HLS_KEY_URL=${HLS_KEY_URL:-}
-      # Multi-codec encoding (H.265 support)
       - ENCODING_LEGACY_TIER=${ENCODING_LEGACY_TIER:-true}
       - ENCODING_MODERN_TIER=${ENCODING_MODERN_TIER:-true}
       - HLS_SEGMENT_TYPE=${HLS_SEGMENT_TYPE:-fmp4}
       - H265_PRESET=${H265_PRESET:-slower}
       - H265_CRF=${H265_CRF:-28}
-      # DRM Configuration
       - DRM_ENABLED=${DRM_ENABLED:-false}
       - DRM_PROVIDER=${DRM_PROVIDER:-widevine}
       - SHAKA_PACKAGER_PATH=${SHAKA_PACKAGER_PATH:-packager}
       - DRM_KEY_SERVER_URL=${DRM_KEY_SERVER_URL:-}
       - DRM_SIGNER_URL=${DRM_SIGNER_URL:-}
-      # Widevine
       - DRM_WIDEVINE_KEY_ID=${DRM_WIDEVINE_KEY_ID:-}
       - DRM_WIDEVINE_KEY=${DRM_WIDEVINE_KEY:-}
       - DRM_WIDEVINE_PSSH=${DRM_WIDEVINE_PSSH:-}
-      # FairPlay
       - DRM_FAIRPLAY_KEY_URL=${DRM_FAIRPLAY_KEY_URL:-}
       - DRM_FAIRPLAY_CERT_PATH=${DRM_FAIRPLAY_CERT_PATH:-}
       - DRM_FAIRPLAY_IV=${DRM_FAIRPLAY_IV:-}
-      # PlayReady
       - DRM_PLAYREADY_KEY_ID=${DRM_PLAYREADY_KEY_ID:-}
       - DRM_PLAYREADY_KEY=${DRM_PLAYREADY_KEY:-}
       - DRM_PLAYREADY_LA_URL=${DRM_PLAYREADY_LA_URL:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CUDA_VISIBLE_DEVICES=0
     volumes:
-      - worker-data:/work
+      - worker-gpu0-data:/work
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,7 +88,205 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              device_ids: ['0']
+              capabilities: [gpu]
+
+  # Worker GPU 1
+  worker-gpu1:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.worker
+    ports:
+      - "9092:9090"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-converter}?sslmode=disable
+      - TEMPORAL_ADDRESS=temporal:${TEMPORAL_PORT:-7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-video-conversion}
+      - S3_ENDPOINT=http://minio:9000
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - S3_BUCKET_OUTPUT=${S3_BUCKET_OUTPUT:-converted}
+      - WORKDIR_ROOT=/work
+      - MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS:-1}
+      - MAX_PARALLEL_FFMPEG=${MAX_PARALLEL_FFMPEG:-1}
+      - MAX_PARALLEL_UPLOADS=${MAX_PARALLEL_UPLOADS:-10}
+      - ENABLE_GPU=${ENABLE_GPU:-false}
+      - HLS_ENABLE_ENCRYPTION=${HLS_ENABLE_ENCRYPTION:-false}
+      - HLS_KEY_URL=${HLS_KEY_URL:-}
+      - ENCODING_LEGACY_TIER=${ENCODING_LEGACY_TIER:-true}
+      - ENCODING_MODERN_TIER=${ENCODING_MODERN_TIER:-true}
+      - HLS_SEGMENT_TYPE=${HLS_SEGMENT_TYPE:-fmp4}
+      - H265_PRESET=${H265_PRESET:-slower}
+      - H265_CRF=${H265_CRF:-28}
+      - DRM_ENABLED=${DRM_ENABLED:-false}
+      - DRM_PROVIDER=${DRM_PROVIDER:-widevine}
+      - SHAKA_PACKAGER_PATH=${SHAKA_PACKAGER_PATH:-packager}
+      - DRM_KEY_SERVER_URL=${DRM_KEY_SERVER_URL:-}
+      - DRM_SIGNER_URL=${DRM_SIGNER_URL:-}
+      - DRM_WIDEVINE_KEY_ID=${DRM_WIDEVINE_KEY_ID:-}
+      - DRM_WIDEVINE_KEY=${DRM_WIDEVINE_KEY:-}
+      - DRM_WIDEVINE_PSSH=${DRM_WIDEVINE_PSSH:-}
+      - DRM_FAIRPLAY_KEY_URL=${DRM_FAIRPLAY_KEY_URL:-}
+      - DRM_FAIRPLAY_CERT_PATH=${DRM_FAIRPLAY_CERT_PATH:-}
+      - DRM_FAIRPLAY_IV=${DRM_FAIRPLAY_IV:-}
+      - DRM_PLAYREADY_KEY_ID=${DRM_PLAYREADY_KEY_ID:-}
+      - DRM_PLAYREADY_KEY=${DRM_PLAYREADY_KEY:-}
+      - DRM_PLAYREADY_LA_URL=${DRM_PLAYREADY_LA_URL:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CUDA_VISIBLE_DEVICES=1
+    volumes:
+      - worker-gpu1-data:/work
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      minio:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '${WORKER_CPU_LIMIT:-1.5}'
+          memory: ${WORKER_MEMORY_LIMIT:-4G}
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+
+  # Worker GPU 2
+  worker-gpu2:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.worker
+    ports:
+      - "9093:9090"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-converter}?sslmode=disable
+      - TEMPORAL_ADDRESS=temporal:${TEMPORAL_PORT:-7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-video-conversion}
+      - S3_ENDPOINT=http://minio:9000
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - S3_BUCKET_OUTPUT=${S3_BUCKET_OUTPUT:-converted}
+      - WORKDIR_ROOT=/work
+      - MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS:-1}
+      - MAX_PARALLEL_FFMPEG=${MAX_PARALLEL_FFMPEG:-1}
+      - MAX_PARALLEL_UPLOADS=${MAX_PARALLEL_UPLOADS:-10}
+      - ENABLE_GPU=${ENABLE_GPU:-false}
+      - HLS_ENABLE_ENCRYPTION=${HLS_ENABLE_ENCRYPTION:-false}
+      - HLS_KEY_URL=${HLS_KEY_URL:-}
+      - ENCODING_LEGACY_TIER=${ENCODING_LEGACY_TIER:-true}
+      - ENCODING_MODERN_TIER=${ENCODING_MODERN_TIER:-true}
+      - HLS_SEGMENT_TYPE=${HLS_SEGMENT_TYPE:-fmp4}
+      - H265_PRESET=${H265_PRESET:-slower}
+      - H265_CRF=${H265_CRF:-28}
+      - DRM_ENABLED=${DRM_ENABLED:-false}
+      - DRM_PROVIDER=${DRM_PROVIDER:-widevine}
+      - SHAKA_PACKAGER_PATH=${SHAKA_PACKAGER_PATH:-packager}
+      - DRM_KEY_SERVER_URL=${DRM_KEY_SERVER_URL:-}
+      - DRM_SIGNER_URL=${DRM_SIGNER_URL:-}
+      - DRM_WIDEVINE_KEY_ID=${DRM_WIDEVINE_KEY_ID:-}
+      - DRM_WIDEVINE_KEY=${DRM_WIDEVINE_KEY:-}
+      - DRM_WIDEVINE_PSSH=${DRM_WIDEVINE_PSSH:-}
+      - DRM_FAIRPLAY_KEY_URL=${DRM_FAIRPLAY_KEY_URL:-}
+      - DRM_FAIRPLAY_CERT_PATH=${DRM_FAIRPLAY_CERT_PATH:-}
+      - DRM_FAIRPLAY_IV=${DRM_FAIRPLAY_IV:-}
+      - DRM_PLAYREADY_KEY_ID=${DRM_PLAYREADY_KEY_ID:-}
+      - DRM_PLAYREADY_KEY=${DRM_PLAYREADY_KEY:-}
+      - DRM_PLAYREADY_LA_URL=${DRM_PLAYREADY_LA_URL:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CUDA_VISIBLE_DEVICES=2
+    volumes:
+      - worker-gpu2-data:/work
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      minio:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '${WORKER_CPU_LIMIT:-1.5}'
+          memory: ${WORKER_MEMORY_LIMIT:-4G}
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['2']
+              capabilities: [gpu]
+
+  # Worker GPU 3
+  worker-gpu3:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.worker
+    ports:
+      - "9094:9090"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-converter}?sslmode=disable
+      - TEMPORAL_ADDRESS=temporal:${TEMPORAL_PORT:-7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-video-conversion}
+      - S3_ENDPOINT=http://minio:9000
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - S3_BUCKET_OUTPUT=${S3_BUCKET_OUTPUT:-converted}
+      - WORKDIR_ROOT=/work
+      - MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS:-1}
+      - MAX_PARALLEL_FFMPEG=${MAX_PARALLEL_FFMPEG:-1}
+      - MAX_PARALLEL_UPLOADS=${MAX_PARALLEL_UPLOADS:-10}
+      - ENABLE_GPU=${ENABLE_GPU:-false}
+      - HLS_ENABLE_ENCRYPTION=${HLS_ENABLE_ENCRYPTION:-false}
+      - HLS_KEY_URL=${HLS_KEY_URL:-}
+      - ENCODING_LEGACY_TIER=${ENCODING_LEGACY_TIER:-true}
+      - ENCODING_MODERN_TIER=${ENCODING_MODERN_TIER:-true}
+      - HLS_SEGMENT_TYPE=${HLS_SEGMENT_TYPE:-fmp4}
+      - H265_PRESET=${H265_PRESET:-slower}
+      - H265_CRF=${H265_CRF:-28}
+      - DRM_ENABLED=${DRM_ENABLED:-false}
+      - DRM_PROVIDER=${DRM_PROVIDER:-widevine}
+      - SHAKA_PACKAGER_PATH=${SHAKA_PACKAGER_PATH:-packager}
+      - DRM_KEY_SERVER_URL=${DRM_KEY_SERVER_URL:-}
+      - DRM_SIGNER_URL=${DRM_SIGNER_URL:-}
+      - DRM_WIDEVINE_KEY_ID=${DRM_WIDEVINE_KEY_ID:-}
+      - DRM_WIDEVINE_KEY=${DRM_WIDEVINE_KEY:-}
+      - DRM_WIDEVINE_PSSH=${DRM_WIDEVINE_PSSH:-}
+      - DRM_FAIRPLAY_KEY_URL=${DRM_FAIRPLAY_KEY_URL:-}
+      - DRM_FAIRPLAY_CERT_PATH=${DRM_FAIRPLAY_CERT_PATH:-}
+      - DRM_FAIRPLAY_IV=${DRM_FAIRPLAY_IV:-}
+      - DRM_PLAYREADY_KEY_ID=${DRM_PLAYREADY_KEY_ID:-}
+      - DRM_PLAYREADY_KEY=${DRM_PLAYREADY_KEY:-}
+      - DRM_PLAYREADY_LA_URL=${DRM_PLAYREADY_LA_URL:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CUDA_VISIBLE_DEVICES=3
+    volumes:
+      - worker-gpu3-data:/work
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+      minio:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '${WORKER_CPU_LIMIT:-1.5}'
+          memory: ${WORKER_MEMORY_LIMIT:-4G}
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['3']
               capabilities: [gpu]
 
   postgres:
@@ -204,6 +399,9 @@ services:
 volumes:
   postgres-data:
   minio-data:
-  worker-data:
+  worker-gpu0-data:
+  worker-gpu1-data:
+  worker-gpu2-data:
+  worker-gpu3-data:
   prometheus-data:
   grafana-data:
