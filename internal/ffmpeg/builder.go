@@ -42,18 +42,12 @@ func (b *CommandBuilder) BuildTranscodeCommand(
 	params := quality.Params()
 	outputPath := filepath.Join(outputDir, string(quality)+".mp4")
 
-	args := []string{"-y"}
-
-	// Add hwaccel BEFORE input file for GPU encoding
-	if b.enableGPU {
-		args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
-	}
-
-	args = append(args,
+	args := []string{
+		"-y",
 		"-i", inputPath,
 		"-progress", "pipe:1",
 		"-stats_period", "1",
-	)
+	}
 
 	// Video encoding
 	if b.enableGPU {
@@ -370,18 +364,12 @@ func (b *CommandBuilder) BuildTranscodeCommandForTier(
 	params := quality.Params()
 	outputPath := filepath.Join(outputDir, string(quality)+".mp4")
 
-	args := []string{"-y"}
-
-	// Add hwaccel BEFORE input file for GPU encoding
-	if b.enableGPU {
-		args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
-	}
-
-	args = append(args,
+	args := []string{
+		"-y",
 		"-i", inputPath,
 		"-progress", "pipe:1",
 		"-stats_period", "1",
-	)
+	}
 
 	// Video encoding based on tier
 	switch tier {
