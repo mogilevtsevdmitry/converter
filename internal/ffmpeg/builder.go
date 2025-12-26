@@ -74,10 +74,13 @@ func (b *CommandBuilder) BuildTranscodeCommand(
 func (b *CommandBuilder) buildGPUVideoArgs(quality domain.Quality, params domain.QualityConfig, metadata *domain.VideoMetadata, profile domain.Profile) []string {
 	args := []string{
 		"-c:v", "h264_nvenc",
-		"-preset", "p4",
+		"-preset", "p2",        // Faster preset for better throughput
 		"-tune", "hq",
 		"-rc", "vbr",
 		"-cq", "23",
+		"-b_ref_mode", "middle", // Use B-frames as references for better quality
+		"-spatial_aq", "1",      // Spatial AQ for better visual quality
+		"-temporal_aq", "1",     // Temporal AQ for motion optimization
 	}
 
 	if quality != domain.QualityOrigin {
@@ -157,11 +160,14 @@ func (b *CommandBuilder) buildH265GPUArgs(quality domain.Quality, params domain.
 
 	args := []string{
 		"-c:v", "hevc_nvenc",
-		"-preset", "p4",
+		"-preset", "p2",        // Faster preset for better throughput
 		"-tune", "hq",
 		"-rc", "vbr",
 		"-cq", fmt.Sprintf("%d", crf),
-		"-tag:v", "hvc1", // Apple compatibility
+		"-tag:v", "hvc1",       // Apple compatibility
+		"-b_ref_mode", "middle", // Use B-frames as references
+		"-spatial_aq", "1",      // Spatial AQ
+		"-temporal_aq", "1",     // Temporal AQ
 	}
 
 	if quality != domain.QualityOrigin {
