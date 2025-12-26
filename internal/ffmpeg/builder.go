@@ -81,9 +81,9 @@ func (b *CommandBuilder) buildGPUVideoArgs(quality domain.Quality, params domain
 	}
 
 	if quality != domain.QualityOrigin {
-		// Use regular scale filter (CPU scaling, GPU encoding)
-		args = append(args, "-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
-			params.Width, params.Height, params.Width, params.Height))
+		// Use simple scale filter without padding for better GPU utilization
+		args = append(args, "-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease",
+			params.Width, params.Height))
 		args = append(args, "-b:v", params.VideoBitrate)
 		args = append(args, "-maxrate", params.MaxBitrate)
 		args = append(args, "-bufsize", params.BufSize)
@@ -170,9 +170,9 @@ func (b *CommandBuilder) buildH265GPUArgs(quality domain.Quality, params domain.
 		maxBitrate := adjustBitrateForCodec(params.MaxBitrate, domain.VideoCodecH265)
 		bufSize := adjustBitrateForCodec(params.BufSize, domain.VideoCodecH265)
 
-		// Use regular scale filter (CPU scaling, GPU encoding)
-		args = append(args, "-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2",
-			params.Width, params.Height, params.Width, params.Height))
+		// Use simple scale filter without padding for better GPU utilization
+		args = append(args, "-vf", fmt.Sprintf("scale=%d:%d:force_original_aspect_ratio=decrease",
+			params.Width, params.Height))
 		args = append(args, "-b:v", videoBitrate)
 		args = append(args, "-maxrate", maxBitrate)
 		args = append(args, "-bufsize", bufSize)
