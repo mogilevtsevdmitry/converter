@@ -44,10 +44,21 @@ func (b *CommandBuilder) BuildTranscodeCommand(
 
 	args := []string{
 		"-y",
+	}
+
+	// Enable GPU decoding when GPU encoding is enabled
+	if b.enableGPU {
+		args = append(args,
+			"-hwaccel", "cuda",
+			"-hwaccel_output_format", "cuda",
+		)
+	}
+
+	args = append(args,
 		"-i", inputPath,
 		"-progress", "pipe:1",
 		"-stats_period", "1",
-	}
+	)
 
 	// Video encoding
 	if b.enableGPU {
@@ -374,10 +385,21 @@ func (b *CommandBuilder) BuildTranscodeCommandForTier(
 
 	args := []string{
 		"-y",
+	}
+
+	// Enable GPU decoding when GPU encoding is enabled
+	if b.enableGPU {
+		args = append(args,
+			"-hwaccel", "cuda",
+			"-hwaccel_output_format", "cuda",
+		)
+	}
+
+	args = append(args,
 		"-i", inputPath,
 		"-progress", "pipe:1",
 		"-stats_period", "1",
-	}
+	)
 
 	// Video encoding based on tier
 	switch tier {
