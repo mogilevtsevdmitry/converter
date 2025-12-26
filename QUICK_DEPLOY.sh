@@ -49,24 +49,12 @@ done
 # ============================================
 INSTALL_DIR=${INSTALL_DIR:-/opt/converter}
 
-# If skipping drivers, repo should already be cloned
-if [ "$SKIP_DRIVERS" = true ]; then
-    if [ ! -d "$INSTALL_DIR" ]; then
-        echo -e "${RED}ERROR: Directory $INSTALL_DIR not found!${NC}"
-        echo -e "${RED}Repository should already be cloned when using --skip-drivers${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}✓ Using existing installation at: ${INSTALL_DIR}${NC}"
-    REPO_URL=""
-elif [ "$SKIP_PROMPTS" = false ]; then
+# Always ask for repo URL if not skipping prompts (unless repo exists)
+if [ "$SKIP_PROMPTS" = false ] && [ ! -d "$INSTALL_DIR" ]; then
     read -p "Enter your GitHub repository URL (e.g., git@github.com:user/converter.git): " REPO_URL
     read -p "Enter installation directory [${INSTALL_DIR}]: " USER_DIR
     INSTALL_DIR=${USER_DIR:-$INSTALL_DIR}
-else
-    REPO_URL=${REPO_URL:-""}
-fi
 
-if [ "$SKIP_DRIVERS" = false ] && [ "$SKIP_PROMPTS" = false ]; then
     echo ""
     echo -e "${YELLOW}Repository: ${REPO_URL}${NC}"
     echo -e "${YELLOW}Install to: ${INSTALL_DIR}${NC}"
@@ -76,6 +64,11 @@ if [ "$SKIP_DRIVERS" = false ] && [ "$SKIP_PROMPTS" = false ]; then
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         exit 1
     fi
+elif [ -d "$INSTALL_DIR" ]; then
+    echo -e "${GREEN}✓ Found existing installation at: ${INSTALL_DIR}${NC}"
+    REPO_URL=""
+else
+    REPO_URL=${REPO_URL:-""}
 fi
 
 # ============================================
@@ -203,21 +196,26 @@ fi
 echo ""
 echo -e "${GREEN}[5/10] Setting up repository...${NC}"
 
-if [ "$SKIP_DRIVERS" = true ]; then
-    echo -e "${YELLOW}Using existing repository at ${INSTALL_DIR}${NC}"
+mkdir -p $(dirname $INSTALL_DIR)
+
+if [ -d "$INSTALL_DIR/.git" ]; then
+    echo -e "${YELLOW}Repository exists. Pulling latest changes...${NC}"
+    cd $INSTALL_DIR
+    git pull || echo -e "${YELLOW}Warning: git pull failed, continuing...${NC}"
+elif [ -d "$INSTALL_DIR" ] && [ -n "$(ls -A $INSTALL_DIR)" ]; then
+    echo -e "${YELLOW}Directory exists but not a git repo. Using existing files...${NC}"
+    cd $INSTALL_DIR
+elif [ -n "$REPO_URL" ]; then
+    echo "Cloning repository from ${REPO_URL}..."
+    git clone $REPO_URL $INSTALL_DIR
     cd $INSTALL_DIR
 else
-    mkdir -p $(dirname $INSTALL_DIR)
-    if [ -d "$INSTALL_DIR" ]; then
-        echo -e "${YELLOW}Directory exists. Pulling latest changes...${NC}"
-        cd $INSTALL_DIR
-        git pull
-    else
-        git clone $REPO_URL $INSTALL_DIR
-        cd $INSTALL_DIR
-    fi
-    echo -e "${GREEN}✓ Repository ready at ${INSTALL_DIR}${NC}"
+    echo -e "${RED}ERROR: Repository URL not provided and directory doesn't exist!${NC}"
+    echo -e "${YELLOW}Please run the script again and provide repository URL${NC}"
+    exit 1
 fi
+
+echo -e "${GREEN}✓ Repository ready at ${INSTALL_DIR}${NC}"
 
 # ============================================
 # Step 6: Configure Environment
