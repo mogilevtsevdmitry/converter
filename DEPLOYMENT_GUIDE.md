@@ -197,7 +197,26 @@ internal/
 deploy/
 ...
 ```
+PostgreSQL:
+  User: postgres
+  Password: ${POSTGRES_PWD}
+  Port: 5455
 
+MinIO:
+  User: admin
+  Password: ${MINIO_PWD}
+  Console: http://$(hostname -I | awk '{print $1}'):9001
+
+Grafana:
+  User: admin
+  Password: ${GRAFANA_PWD}
+  URL: http://$(hostname -I | awk '{print $1}'):3000
+
+Temporal UI:
+  URL: http://$(hostname -I | awk '{print $1}'):8088
+
+API:
+  URL: http://$(hostname -I | awk '{print $1}'):8080
 ---
 
 ## ⚙️ Шаг 7: Настройка переменных окружения

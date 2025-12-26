@@ -88,6 +88,11 @@ services:
         limits:
           cpus: '${WORKER_CPU_LIMIT:-1.5}'
           memory: ${WORKER_MEMORY_LIMIT:-4G}
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   postgres:
     image: postgres:16-alpine
