@@ -177,9 +177,8 @@ func (b *CommandBuilder) buildH265GPUArgs(quality domain.Quality, params domain.
 		"-rc", "vbr",
 		"-cq", fmt.Sprintf("%d", crf),
 		"-tag:v", "hvc1",       // Apple compatibility
-		"-b_ref_mode", "middle", // Use B-frames as references
-		"-spatial_aq", "1",      // Spatial AQ
-		"-temporal_aq", "1",     // Temporal AQ
+		// Note: P100 doesn't support temporal_aq and some advanced features for HEVC
+		// Keep only basic parameters for maximum compatibility
 	}
 
 	if quality != domain.QualityOrigin {
