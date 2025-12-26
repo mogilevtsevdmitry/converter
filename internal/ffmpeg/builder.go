@@ -96,8 +96,9 @@ func (b *CommandBuilder) buildGPUVideoArgs(quality domain.Quality, params domain
 
 	if quality != domain.QualityOrigin {
 		// Use GPU-accelerated scaling (scale_npp) for better performance
-		// -2 means auto-calculate with even number (required for h264)
-		args = append(args, "-vf", fmt.Sprintf("scale_npp=w=%d:h=-2:format=yuv420p:interp_algo=super",
+		// Keep frames in CUDA format for nvenc (no format conversion)
+		// -2 means auto-calculate height with even number (required for h264)
+		args = append(args, "-vf", fmt.Sprintf("scale_npp=w=%d:h=-2:interp_algo=super",
 			params.Width))
 		args = append(args, "-b:v", params.VideoBitrate)
 		args = append(args, "-maxrate", params.MaxBitrate)
@@ -189,8 +190,9 @@ func (b *CommandBuilder) buildH265GPUArgs(quality domain.Quality, params domain.
 		bufSize := adjustBitrateForCodec(params.BufSize, domain.VideoCodecH265)
 
 		// Use GPU-accelerated scaling (scale_npp) for better performance
-		// -2 means auto-calculate with even number (required for h265)
-		args = append(args, "-vf", fmt.Sprintf("scale_npp=w=%d:h=-2:format=yuv420p:interp_algo=super",
+		// Keep frames in CUDA format for hevc_nvenc (no format conversion)
+		// -2 means auto-calculate height with even number (required for h265)
+		args = append(args, "-vf", fmt.Sprintf("scale_npp=w=%d:h=-2:interp_algo=super",
 			params.Width))
 		args = append(args, "-b:v", videoBitrate)
 		args = append(args, "-maxrate", maxBitrate)
