@@ -61,6 +61,9 @@ func (b *CommandBuilder) BuildTranscodeCommand(
 		"-stats_period", "1",
 	)
 
+	// Stream mappings (video + all audio tracks)
+	args = append(args, b.buildStreamMappings(metadata)...)
+
 	// Video encoding
 	if b.enableGPU {
 		args = append(args, b.buildGPUVideoArgs(quality, params, metadata, profile)...)
@@ -68,7 +71,7 @@ func (b *CommandBuilder) BuildTranscodeCommand(
 		args = append(args, b.buildCPUVideoArgs(quality, params, metadata, profile)...)
 	}
 
-	// Audio encoding
+	// Audio encoding (applies to all mapped audio tracks)
 	args = append(args, b.buildAudioArgs(metadata)...)
 
 	// Output format
@@ -144,7 +147,28 @@ func (b *CommandBuilder) buildCPUVideoArgs(quality domain.Quality, params domain
 	return args
 }
 
+// buildStreamMappings generates -map arguments for video and all audio tracks
+// This enables multiple audio track support for seamless switching in players
+func (b *CommandBuilder) buildStreamMappings(metadata *domain.VideoMetadata) []string {
+	args := []string{
+		"-map", "0:v:0", // Map first video stream
+	}
+
+	// Map all audio tracks
+	if len(metadata.AudioTracks) > 0 {
+		for i := range metadata.AudioTracks {
+			args = append(args, "-map", fmt.Sprintf("0:a:%d", i))
+		}
+	} else {
+		// Fallback: map first audio stream if no track info available
+		args = append(args, "-map", "0:a:0?")
+	}
+
+	return args
+}
+
 func (b *CommandBuilder) buildAudioArgs(metadata *domain.VideoMetadata) []string {
+	// Base audio encoding parameters applied to all tracks
 	args := []string{
 		"-c:a", "aac",
 		"-ar", "48000",
@@ -152,7 +176,7 @@ func (b *CommandBuilder) buildAudioArgs(metadata *domain.VideoMetadata) []string
 		"-b:a", "192k",
 	}
 
-	// Check if downmix is needed
+	// Check if downmix is needed for any track
 	for _, track := range metadata.AudioTracks {
 		if track.Channels > 2 {
 			args = append(args, "-af", "aresample=async=1000")
@@ -400,6 +424,9 @@ func (b *CommandBuilder) BuildTranscodeCommandForTier(
 		"-stats_period", "1",
 	)
 
+	// Stream mappings (video + all audio tracks)
+	args = append(args, b.buildStreamMappings(metadata)...)
+
 	// Video encoding based on tier
 	switch tier {
 	case domain.TierModern:
@@ -471,6 +498,7 @@ func (b *CommandBuilder) BuildSubtitleExtractCommand(
 }
 
 // BuildThumbnailCommand builds thumbnail generation command
+// Uses scale with -2 to preserve aspect ratio (height auto-calculated, divisible by 2)
 func (b *CommandBuilder) BuildThumbnailCommand(
 	inputPath string,
 	outputPattern string,
@@ -480,7 +508,7 @@ func (b *CommandBuilder) BuildThumbnailCommand(
 	args := []string{
 		"-y",
 		"-i", inputPath,
-		"-vf", fmt.Sprintf("fps=1/%f,scale=%d:%d", interval, width, height),
+		"-vf", fmt.Sprintf("fps=1/%f,scale=%d:-2", interval, width),
 		"-vsync", "vfr",
 		"-progress", "pipe:1",
 		outputPattern,
