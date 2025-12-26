@@ -162,9 +162,11 @@ func determineArtifactType(key string) domain.ArtifactType {
 	switch {
 	case base == "master.m3u8":
 		return domain.ArtifactTypeHLSMaster
+	case ext == ".mpd":
+		return domain.ArtifactTypeDASHManifest
 	case ext == ".m3u8":
 		return domain.ArtifactTypeHLSVariant
-	case ext == ".ts":
+	case ext == ".ts" || ext == ".m4s":
 		return domain.ArtifactTypeSegment
 	case ext == ".vtt" && filepath.Dir(key) == "thumbs":
 		return domain.ArtifactTypeThumbVTT

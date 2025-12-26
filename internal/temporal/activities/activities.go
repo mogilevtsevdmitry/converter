@@ -522,6 +522,8 @@ type HLSInput struct {
 	TierOutputPaths map[domain.EncodingTier]map[domain.Quality]string `json:"tierOutputPaths,omitempty"`
 	// EnabledTiers lists which tiers were encoded
 	EnabledTiers []domain.EncodingTier `json:"enabledTiers,omitempty"`
+	// Duration of the video for DASH manifest generation
+	Duration time.Duration `json:"duration,omitempty"`
 }
 
 // HLSOutput holds HLS segmentation output
@@ -779,14 +781,37 @@ func (a *Activities) segmentHLSMultiTier(
 		return nil, fmt.Errorf("failed to write master playlist: %w", err)
 	}
 
+	// Generate DASH manifest for modern tier (fMP4 segments)
+	var mpdPath string
+	for _, tier := range input.EnabledTiers {
+		tierConfig := domain.GetTierConfig(tier)
+		if tierConfig.Container == domain.ContainerFMP4 {
+			dashManifest := ffmpeg.GenerateDASHManifest(ffmpeg.DASHManifest{
+				Duration:        input.Duration,
+				SegmentDuration: segmentDuration,
+				Qualities:       qualities,
+				TierDir:         string(tier),
+			})
+			mpdPath = filepath.Join(hlsDir, "manifest.mpd")
+			if err := ffmpeg.WriteDASHManifest(mpdPath, dashManifest); err != nil {
+				logger.Warn("failed to write DASH manifest", zap.Error(err))
+			} else {
+				logger.Info("DASH manifest generated", zap.String("path", mpdPath))
+			}
+			break // Only generate one DASH manifest
+		}
+	}
+
 	a.updateProgress(ctx, input.JobID, domain.StageHLSSegmentation, 100)
 	logger.Info("multi-tier HLS segmentation complete",
 		zap.String("masterPlaylist", masterPath),
+		zap.String("dashManifest", mpdPath),
 		zap.Int("tiers", len(input.EnabledTiers)),
 		zap.Bool("encrypted", encryption != nil))
 
 	output := &HLSOutput{
 		MasterPlaylistPath: masterPath,
+		MPDPath:            mpdPath,
 		HLSDir:             hlsDir,
 		Encrypted:          encryption != nil,
 		MultiCodec:         true,

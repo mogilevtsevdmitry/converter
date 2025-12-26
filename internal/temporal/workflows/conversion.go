@@ -179,7 +179,7 @@ func VideoConversionWorkflow(ctx workflow.Context, input VideoConversionWorkflow
 		return handleCancellation(ctx, input.JobID, output)
 	}
 
-	// Step 6: HLS Segmentation
+	// Step 6: HLS Segmentation (and DASH manifest generation for fMP4)
 	logger.Info("Starting HLS segmentation")
 	var hlsOutput *activities.HLSOutput
 	err = workflow.ExecuteActivity(ctx, "SegmentHLS", activities.HLSInput{
@@ -187,6 +187,7 @@ func VideoConversionWorkflow(ctx workflow.Context, input VideoConversionWorkflow
 		OutputPaths:     transcodeOutput.OutputPaths,
 		TierOutputPaths: transcodeOutput.TierOutputPaths,
 		EnabledTiers:    transcodeOutput.EnabledTiers,
+		Duration:        metadataOutput.Metadata.Duration,
 	}).Get(ctx, &hlsOutput)
 	if err != nil {
 		output.Status = domain.JobStatusFailed

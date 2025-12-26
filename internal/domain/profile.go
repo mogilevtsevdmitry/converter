@@ -5,8 +5,10 @@ type Quality string
 
 const (
 	Quality480p   Quality = "480p"
+	Quality576p   Quality = "576p"
 	Quality720p   Quality = "720p"
 	Quality1080p  Quality = "1080p"
+	Quality1440p  Quality = "1440p"
 	Quality2160p  Quality = "2160p"
 	QualityOrigin Quality = "origin"
 )
@@ -20,6 +22,14 @@ func (q Quality) Params() QualityConfig {
 			VideoBitrate: "1500k",
 			MaxBitrate:   "2000k",
 			BufSize:      "3000k",
+			AudioBitrate: "128k",
+		},
+		Quality576p: {
+			Width:        1024,
+			Height:       576,
+			VideoBitrate: "2000k",
+			MaxBitrate:   "2500k",
+			BufSize:      "4000k",
 			AudioBitrate: "128k",
 		},
 		Quality720p: {
@@ -36,6 +46,14 @@ func (q Quality) Params() QualityConfig {
 			VideoBitrate: "6000k",
 			MaxBitrate:   "8000k",
 			BufSize:      "12000k",
+			AudioBitrate: "256k",
+		},
+		Quality1440p: {
+			Width:        2560,
+			Height:       1440,
+			VideoBitrate: "10000k",
+			MaxBitrate:   "12000k",
+			BufSize:      "20000k",
 			AudioBitrate: "256k",
 		},
 		Quality2160p: {

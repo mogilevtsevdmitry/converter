@@ -277,7 +277,9 @@ func (p *Packager) getFirstQuality(inputPaths map[domain.Quality]string) domain.
 	// Prefer higher quality for audio
 	priorities := []domain.Quality{
 		domain.Quality1080p,
+		domain.Quality1440p,
 		domain.Quality720p,
+		domain.Quality576p,
 		domain.Quality480p,
 		domain.Quality2160p,
 		domain.QualityOrigin,

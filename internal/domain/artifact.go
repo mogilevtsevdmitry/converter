@@ -10,12 +10,13 @@ import (
 type ArtifactType string
 
 const (
-	ArtifactTypeHLSMaster   ArtifactType = "HLS_MASTER"
-	ArtifactTypeHLSVariant  ArtifactType = "HLS_VARIANT"
-	ArtifactTypeSegment     ArtifactType = "SEGMENT"
-	ArtifactTypeSubtitle    ArtifactType = "SUBTITLE"
-	ArtifactTypeThumbTile   ArtifactType = "THUMB_TILE"
-	ArtifactTypeThumbVTT    ArtifactType = "THUMB_VTT"
+	ArtifactTypeHLSMaster    ArtifactType = "HLS_MASTER"
+	ArtifactTypeHLSVariant   ArtifactType = "HLS_VARIANT"
+	ArtifactTypeDASHManifest ArtifactType = "DASH_MANIFEST"
+	ArtifactTypeSegment      ArtifactType = "SEGMENT"
+	ArtifactTypeSubtitle     ArtifactType = "SUBTITLE"
+	ArtifactTypeThumbTile    ArtifactType = "THUMB_TILE"
+	ArtifactTypeThumbVTT     ArtifactType = "THUMB_VTT"
 	ArtifactTypeMetadataJSON ArtifactType = "METADATA_JSON"
 )
 
