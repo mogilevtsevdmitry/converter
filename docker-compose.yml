@@ -4,18 +4,18 @@ services:
       context: .
       dockerfile: deploy/docker/Dockerfile.api
     ports:
-      - "8080:8080"
+      - "${API_PORT:-8080}:8080"
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/converter?sslmode=disable
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_NAMESPACE=default
-      - TEMPORAL_TASK_QUEUE=video-conversion
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-converter}?sslmode=disable
+      - TEMPORAL_ADDRESS=temporal:${TEMPORAL_PORT:-7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-video-conversion}
       - S3_ENDPOINT=http://minio:9000
-      - S3_REGION=us-east-1
-      - S3_ACCESS_KEY=minioadmin
-      - S3_SECRET_KEY=minioadmin
-      - S3_BUCKET_OUTPUT=converted
-      - LOG_LEVEL=info
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - S3_BUCKET_OUTPUT=${S3_BUCKET_OUTPUT:-converted}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy
@@ -30,49 +30,49 @@ services:
       context: .
       dockerfile: deploy/docker/Dockerfile.worker
     ports:
-      - "9091:9090"
+      - "${WORKER_PORT:-9091}:9090"
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/converter?sslmode=disable
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_NAMESPACE=default
-      - TEMPORAL_TASK_QUEUE=video-conversion
+      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-converter}?sslmode=disable
+      - TEMPORAL_ADDRESS=temporal:${TEMPORAL_PORT:-7233}
+      - TEMPORAL_NAMESPACE=${TEMPORAL_NAMESPACE:-default}
+      - TEMPORAL_TASK_QUEUE=${TEMPORAL_TASK_QUEUE:-video-conversion}
       - S3_ENDPOINT=http://minio:9000
-      - S3_REGION=us-east-1
-      - S3_ACCESS_KEY=minioadmin
-      - S3_SECRET_KEY=minioadmin
-      - S3_BUCKET_OUTPUT=converted
-      - WORKDIR_ROOT=/work
-      - MAX_PARALLEL_JOBS=1
-      - MAX_PARALLEL_FFMPEG=1
-      - MAX_PARALLEL_UPLOADS=10
-      - ENABLE_GPU=false
-      - HLS_ENABLE_ENCRYPTION=false
-      - HLS_KEY_URL=
+      - S3_REGION=${S3_REGION:-us-east-1}
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - S3_BUCKET_OUTPUT=${S3_BUCKET_OUTPUT:-converted}
+      - WORKDIR_ROOT=${WORKDIR_ROOT:-/work}
+      - MAX_PARALLEL_JOBS=${MAX_PARALLEL_JOBS:-1}
+      - MAX_PARALLEL_FFMPEG=${MAX_PARALLEL_FFMPEG:-1}
+      - MAX_PARALLEL_UPLOADS=${MAX_PARALLEL_UPLOADS:-10}
+      - ENABLE_GPU=${ENABLE_GPU:-false}
+      - HLS_ENABLE_ENCRYPTION=${HLS_ENABLE_ENCRYPTION:-false}
+      - HLS_KEY_URL=${HLS_KEY_URL:-}
       # Multi-codec encoding (H.265 support)
-      - ENCODING_LEGACY_TIER=true
-      - ENCODING_MODERN_TIER=true
-      - HLS_SEGMENT_TYPE=fmp4
-      - H265_PRESET=slower
-      - H265_CRF=28
+      - ENCODING_LEGACY_TIER=${ENCODING_LEGACY_TIER:-true}
+      - ENCODING_MODERN_TIER=${ENCODING_MODERN_TIER:-true}
+      - HLS_SEGMENT_TYPE=${HLS_SEGMENT_TYPE:-fmp4}
+      - H265_PRESET=${H265_PRESET:-slower}
+      - H265_CRF=${H265_CRF:-28}
       # DRM Configuration
-      - DRM_ENABLED=false
-      - DRM_PROVIDER=widevine
-      - SHAKA_PACKAGER_PATH=packager
-      - DRM_KEY_SERVER_URL=
-      - DRM_SIGNER_URL=
+      - DRM_ENABLED=${DRM_ENABLED:-false}
+      - DRM_PROVIDER=${DRM_PROVIDER:-widevine}
+      - SHAKA_PACKAGER_PATH=${SHAKA_PACKAGER_PATH:-packager}
+      - DRM_KEY_SERVER_URL=${DRM_KEY_SERVER_URL:-}
+      - DRM_SIGNER_URL=${DRM_SIGNER_URL:-}
       # Widevine
-      - DRM_WIDEVINE_KEY_ID=
-      - DRM_WIDEVINE_KEY=
-      - DRM_WIDEVINE_PSSH=
+      - DRM_WIDEVINE_KEY_ID=${DRM_WIDEVINE_KEY_ID:-}
+      - DRM_WIDEVINE_KEY=${DRM_WIDEVINE_KEY:-}
+      - DRM_WIDEVINE_PSSH=${DRM_WIDEVINE_PSSH:-}
       # FairPlay
-      - DRM_FAIRPLAY_KEY_URL=
-      - DRM_FAIRPLAY_CERT_PATH=
-      - DRM_FAIRPLAY_IV=
+      - DRM_FAIRPLAY_KEY_URL=${DRM_FAIRPLAY_KEY_URL:-}
+      - DRM_FAIRPLAY_CERT_PATH=${DRM_FAIRPLAY_CERT_PATH:-}
+      - DRM_FAIRPLAY_IV=${DRM_FAIRPLAY_IV:-}
       # PlayReady
-      - DRM_PLAYREADY_KEY_ID=
-      - DRM_PLAYREADY_KEY=
-      - DRM_PLAYREADY_LA_URL=
-      - LOG_LEVEL=info
+      - DRM_PLAYREADY_KEY_ID=${DRM_PLAYREADY_KEY_ID:-}
+      - DRM_PLAYREADY_KEY=${DRM_PLAYREADY_KEY:-}
+      - DRM_PLAYREADY_LA_URL=${DRM_PLAYREADY_LA_URL:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - worker-data:/work
     depends_on:
@@ -86,22 +86,22 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.5'
-          memory: 4G
+          cpus: '${WORKER_CPU_LIMIT:-1.5}'
+          memory: ${WORKER_MEMORY_LIMIT:-4G}
 
   postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=converter
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-converter}
     ports:
-      - "5455:5432"
+      - "${POSTGRES_PORT:-5455}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -110,12 +110,12 @@ services:
   temporal:
     image: temporalio/auto-setup:1.22
     ports:
-      - "7233:7233"
+      - "${TEMPORAL_PORT:-7233}:7233"
     environment:
       - DB=postgresql
       - DB_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PWD=postgres
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_SEEDS=postgres
     depends_on:
       postgres:
@@ -125,10 +125,10 @@ services:
   temporal-ui:
     image: temporalio/ui:2.21.0
     ports:
-      - "8088:8080"
+      - "${TEMPORAL_UI_PORT:-8088}:8080"
     environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+      - TEMPORAL_ADDRESS=temporal:${TEMPORAL_PORT:-7233}
+      - TEMPORAL_CORS_ORIGINS=http://localhost:${GRAFANA_PORT:-3000}
     depends_on:
       - temporal
     restart: unless-stopped
@@ -137,11 +137,11 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
       - minio-data:/data
     healthcheck:
@@ -158,17 +158,17 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
       mc mb myminio/source --ignore-existing;
-      mc mb myminio/converted --ignore-existing;
-      mc anonymous set download myminio/converted;
+      mc mb myminio/${S3_BUCKET_OUTPUT:-converted} --ignore-existing;
+      mc anonymous set download myminio/${S3_BUCKET_OUTPUT:-converted};
       exit 0;
       "
 
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -181,9 +181,9 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
