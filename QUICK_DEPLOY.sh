@@ -132,16 +132,26 @@ if [ "$SKIP_DRIVERS" = true ]; then
     echo -e "${YELLOW}Skipping driver installation (--skip-drivers flag)${NC}"
 
     # Verify drivers are working
-    if command -v nvidia-smi &> /dev/null; then
-        echo -e "${GREEN}✓ NVIDIA drivers already installed${NC}"
+    if nvidia-smi &> /dev/null; then
+        echo -e "${GREEN}✓ NVIDIA drivers working${NC}"
         nvidia-smi --query-gpu=name --format=csv,noheader
     else
-        echo -e "${RED}ERROR: --skip-drivers used but nvidia-smi not found!${NC}"
-        echo -e "${RED}Run without --skip-drivers to install drivers${NC}"
+        echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${RED}ERROR: nvidia-smi failed!${NC}"
+        echo -e "${RED}Drivers are installed but not loaded.${NC}"
+        echo ""
+        echo -e "${YELLOW}This usually means:${NC}"
+        echo -e "  1. Drivers were just installed but system not rebooted"
+        echo -e "  2. Kernel module not loaded"
+        echo ""
+        echo -e "${YELLOW}Solution:${NC}"
+        echo -e "  ${GREEN}reboot${NC}  # Reboot now"
+        echo -e "  ${GREEN}# Then run: ./QUICK_DEPLOY.sh --skip-drivers${NC}"
+        echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         exit 1
     fi
-elif command -v nvidia-smi &> /dev/null; then
-    echo -e "${YELLOW}NVIDIA drivers already installed, skipping...${NC}"
+elif nvidia-smi &> /dev/null; then
+    echo -e "${GREEN}✓ NVIDIA drivers already installed and working${NC}"
     nvidia-smi --query-gpu=name --format=csv,noheader
 else
     echo "Installing NVIDIA drivers..."
