@@ -203,6 +203,10 @@ type TranscodeInput struct {
 // TranscodeOutput holds transcode output
 type TranscodeOutput struct {
 	OutputPaths map[domain.Quality]string `json:"outputPaths"`
+	// Multi-tier output paths: tier -> quality -> path
+	TierOutputPaths map[domain.EncodingTier]map[domain.Quality]string `json:"tierOutputPaths,omitempty"`
+	// EnabledTiers lists which tiers were encoded
+	EnabledTiers []domain.EncodingTier `json:"enabledTiers,omitempty"`
 }
 
 // Transcode transcodes video to target qualities
@@ -232,48 +236,110 @@ func (a *Activities) Transcode(ctx context.Context, input TranscodeInput) (*Tran
 	// Filter qualities based on source resolution
 	qualities := domain.FilterQualitiesForResolution(job.Profile.Qualities, input.Metadata.Height)
 
-	builder := ffmpeg.NewCommandBuilder(a.config.FFmpeg.BinaryPath, a.config.Worker.EnableGPU)
+	builder := ffmpeg.NewCommandBuilder(a.config.FFmpeg.BinaryPath, a.config.Worker.EnableGPU, &a.config.Encoding)
 	runner := ffmpeg.NewRunner(a.config.FFmpeg.BinaryPath, a.config.FFmpeg.ProcessTimeout)
 
-	outputPaths := make(map[domain.Quality]string)
-	totalQualities := len(qualities)
+	// Determine enabled tiers
+	var enabledTiers []domain.EncodingTier
+	if a.config.Encoding.EnableLegacyTier {
+		enabledTiers = append(enabledTiers, domain.TierLegacy)
+	}
+	if a.config.Encoding.EnableModernTier {
+		enabledTiers = append(enabledTiers, domain.TierModern)
+	}
 
-	for i, quality := range qualities {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
+	// If no tiers enabled, default to legacy for backward compatibility
+	if len(enabledTiers) == 0 {
+		enabledTiers = []domain.EncodingTier{domain.TierLegacy}
+	}
+
+	logger.Info("multi-tier transcoding",
+		zap.Int("tiers", len(enabledTiers)),
+		zap.Int("qualities", len(qualities)),
+		zap.Strings("enabledTiers", func() []string {
+			s := make([]string, len(enabledTiers))
+			for i, t := range enabledTiers {
+				s[i] = string(t)
+			}
+			return s
+		}()))
+
+	tierOutputPaths := make(map[domain.EncodingTier]map[domain.Quality]string)
+	outputPaths := make(map[domain.Quality]string) // Legacy compatibility
+
+	totalTasks := len(enabledTiers) * len(qualities)
+	currentTask := 0
+
+	for _, tier := range enabledTiers {
+		tierConfig := domain.GetTierConfig(tier)
+		tierDir := filepath.Join(workspace.Paths().Transcoded, string(tier))
+
+		// Create tier directory
+		if err := os.MkdirAll(tierDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create tier directory: %w", err)
 		}
 
-		logger.Info("transcoding quality", zap.String("quality", string(quality)))
+		tierOutputPaths[tier] = make(map[domain.Quality]string)
 
-		cmd := builder.BuildTranscodeCommand(inputPath, workspace.Paths().Transcoded, quality, input.Metadata, job.Profile)
+		for _, quality := range qualities {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
 
-		err := runner.Run(ctx, cmd.Args, func(progress ffmpeg.Progress) {
-			percent := ffmpeg.CalculateProgress(progress.OutTime, input.Metadata.Duration)
-			qualityPercent := (i*100 + percent) / totalQualities
-			a.updateProgress(ctx, input.JobID, domain.StageTranscoding, qualityPercent)
-			// Send heartbeat to Temporal to prevent timeout
-			activity.RecordHeartbeat(ctx, qualityPercent)
-		})
+			logger.Info("transcoding",
+				zap.String("tier", string(tier)),
+				zap.String("quality", string(quality)),
+				zap.String("videoCodec", string(tierConfig.VideoCodec)))
 
-		if err != nil {
-			return nil, a.recordError(ctx, input.JobID, domain.StageTranscoding, domain.ErrCodeFFmpegFailed, err)
+			cmd := builder.BuildTranscodeCommandForTier(inputPath, tierDir, quality, input.Metadata, job.Profile, tier)
+
+			err := runner.Run(ctx, cmd.Args, func(progress ffmpeg.Progress) {
+				percent := ffmpeg.CalculateProgress(progress.OutTime, input.Metadata.Duration)
+				overallPercent := (currentTask*100 + percent) / totalTasks
+				a.updateProgress(ctx, input.JobID, domain.StageTranscoding, overallPercent)
+				activity.RecordHeartbeat(ctx, overallPercent)
+			})
+
+			if err != nil {
+				return nil, a.recordError(ctx, input.JobID, domain.StageTranscoding, domain.ErrCodeFFmpegFailed,
+					fmt.Errorf("tier=%s quality=%s: %w", tier, quality, err))
+			}
+
+			if err := ffmpeg.ValidateOutput(cmd.OutputPath); err != nil {
+				return nil, a.recordError(ctx, input.JobID, domain.StageTranscoding, domain.ErrCodeFFmpegFailed, err)
+			}
+
+			tierOutputPaths[tier][quality] = cmd.OutputPath
+
+			// For backward compatibility, use legacy tier paths as main output
+			if tier == domain.TierLegacy {
+				outputPaths[quality] = cmd.OutputPath
+			}
+
+			currentTask++
+			logger.Info("quality transcoded",
+				zap.String("tier", string(tier)),
+				zap.String("quality", string(quality)),
+				zap.String("output", cmd.OutputPath))
 		}
+	}
 
-		if err := ffmpeg.ValidateOutput(cmd.OutputPath); err != nil {
-			return nil, a.recordError(ctx, input.JobID, domain.StageTranscoding, domain.ErrCodeFFmpegFailed, err)
-		}
-
-		outputPaths[quality] = cmd.OutputPath
-		logger.Info("quality transcoded", zap.String("quality", string(quality)), zap.String("output", cmd.OutputPath))
+	// If only modern tier is enabled, use it as main output
+	if len(outputPaths) == 0 && len(tierOutputPaths[domain.TierModern]) > 0 {
+		outputPaths = tierOutputPaths[domain.TierModern]
 	}
 
 	if err := a.updateProgress(ctx, input.JobID, domain.StageTranscoding, 100); err != nil {
 		logger.Error("failed to update progress", zap.Error(err))
 	}
 
-	return &TranscodeOutput{OutputPaths: outputPaths}, nil
+	return &TranscodeOutput{
+		OutputPaths:     outputPaths,
+		TierOutputPaths: tierOutputPaths,
+		EnabledTiers:    enabledTiers,
+	}, nil
 }
 
 // SubtitlesInput holds subtitles extraction input
@@ -314,7 +380,7 @@ func (a *Activities) ExtractSubtitles(ctx context.Context, input SubtitlesInput)
 	workspace := ffmpeg.NewWorkspace(a.config.Worker.WorkdirRoot, input.JobID)
 	inputPath := workspace.InputPath("source" + filepath.Ext(job.SourceKey))
 
-	builder := ffmpeg.NewCommandBuilder(a.config.FFmpeg.BinaryPath, a.config.Worker.EnableGPU)
+	builder := ffmpeg.NewCommandBuilder(a.config.FFmpeg.BinaryPath, a.config.Worker.EnableGPU, &a.config.Encoding)
 	runner := ffmpeg.NewRunner(a.config.FFmpeg.BinaryPath, a.config.FFmpeg.ProcessTimeout)
 
 	subtitlePaths := make(map[string]string)
@@ -410,7 +476,7 @@ func (a *Activities) GenerateThumbnails(ctx context.Context, input ThumbnailsInp
 		interval = 1
 	}
 
-	builder := ffmpeg.NewCommandBuilder(a.config.FFmpeg.BinaryPath, a.config.Worker.EnableGPU)
+	builder := ffmpeg.NewCommandBuilder(a.config.FFmpeg.BinaryPath, a.config.Worker.EnableGPU, &a.config.Encoding)
 	runner := ffmpeg.NewRunner(a.config.FFmpeg.BinaryPath, a.config.FFmpeg.ProcessTimeout)
 
 	// Generate thumbnails
@@ -452,6 +518,10 @@ func (a *Activities) GenerateThumbnails(ctx context.Context, input ThumbnailsInp
 type HLSInput struct {
 	JobID       uuid.UUID                 `json:"jobId"`
 	OutputPaths map[domain.Quality]string `json:"outputPaths"`
+	// Multi-tier output paths: tier -> quality -> path
+	TierOutputPaths map[domain.EncodingTier]map[domain.Quality]string `json:"tierOutputPaths,omitempty"`
+	// EnabledTiers lists which tiers were encoded
+	EnabledTiers []domain.EncodingTier `json:"enabledTiers,omitempty"`
 }
 
 // HLSOutput holds HLS segmentation output
@@ -464,6 +534,9 @@ type HLSOutput struct {
 	DRMProvider        string `json:"drmProvider,omitempty"`
 	KeyPath            string `json:"keyPath,omitempty"`
 	KeyID              string `json:"keyId,omitempty"`
+	// Multi-codec support
+	MultiCodec   bool                  `json:"multiCodec"`
+	EnabledTiers []domain.EncodingTier `json:"enabledTiers,omitempty"`
 }
 
 // SegmentHLS creates HLS segments
@@ -548,7 +621,7 @@ func (a *Activities) segmentHLSWithFFmpeg(
 		segmentDuration = a.config.HLS.SegmentDurationSec
 	}
 
-	builder := ffmpeg.NewCommandBuilder(a.config.FFmpeg.BinaryPath, a.config.Worker.EnableGPU)
+	builder := ffmpeg.NewCommandBuilder(a.config.FFmpeg.BinaryPath, a.config.Worker.EnableGPU, &a.config.Encoding)
 	runner := ffmpeg.NewRunner(a.config.FFmpeg.BinaryPath, a.config.FFmpeg.ProcessTimeout)
 
 	// Generate encryption if enabled
@@ -563,6 +636,14 @@ func (a *Activities) segmentHLSWithFFmpeg(
 		logger.Info("HLS AES-128 encryption enabled", zap.String("keyURL", encryption.KeyURL))
 	}
 
+	// Check if multi-tier is enabled
+	isMultiTier := len(input.TierOutputPaths) > 0 && len(input.EnabledTiers) > 0
+
+	if isMultiTier {
+		return a.segmentHLSMultiTier(ctx, input, job, hlsDir, segmentDuration, builder, runner, encryption, logger)
+	}
+
+	// Legacy single-tier processing
 	qualities := make([]domain.Quality, 0, len(input.OutputPaths))
 	for q := range input.OutputPaths {
 		qualities = append(qualities, q)
@@ -599,6 +680,117 @@ func (a *Activities) segmentHLSWithFFmpeg(
 		MasterPlaylistPath: masterPath,
 		HLSDir:             hlsDir,
 		Encrypted:          encryption != nil,
+	}
+	if encryption != nil {
+		output.KeyPath = encryption.KeyPath
+	}
+
+	return output, nil
+}
+
+// segmentHLSMultiTier segments HLS for multiple encoding tiers
+func (a *Activities) segmentHLSMultiTier(
+	ctx context.Context,
+	input HLSInput,
+	job *domain.Job,
+	hlsDir string,
+	segmentDuration int,
+	builder *ffmpeg.CommandBuilder,
+	runner *ffmpeg.Runner,
+	encryption *ffmpeg.EncryptionInfo,
+	logger *zap.Logger,
+) (*HLSOutput, error) {
+	logger.Info("multi-tier HLS segmentation",
+		zap.Int("tiers", len(input.EnabledTiers)),
+		zap.Strings("enabledTiers", func() []string {
+			s := make([]string, len(input.EnabledTiers))
+			for i, t := range input.EnabledTiers {
+				s[i] = string(t)
+			}
+			return s
+		}()))
+
+	// Calculate total tasks
+	totalTasks := 0
+	for _, tier := range input.EnabledTiers {
+		if paths, ok := input.TierOutputPaths[tier]; ok {
+			totalTasks += len(paths)
+		}
+	}
+
+	currentTask := 0
+	var qualities []domain.Quality
+
+	for _, tier := range input.EnabledTiers {
+		tierPaths, ok := input.TierOutputPaths[tier]
+		if !ok {
+			continue
+		}
+
+		tierConfig := domain.GetTierConfig(tier)
+		tierHLSDir := filepath.Join(hlsDir, string(tier))
+
+		// Create tier HLS directory
+		if err := os.MkdirAll(tierHLSDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create tier HLS directory: %w", err)
+		}
+
+		for quality, inputPath := range tierPaths {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
+
+			// Collect qualities for master playlist (use first tier)
+			if tier == input.EnabledTiers[0] {
+				qualities = append(qualities, quality)
+			}
+
+			logger.Info("HLS segmentation",
+				zap.String("tier", string(tier)),
+				zap.String("quality", string(quality)),
+				zap.String("container", string(tierConfig.Container)))
+
+			cmd := builder.BuildHLSCommandForTier(inputPath, tierHLSDir, string(quality), segmentDuration, tier, encryption)
+
+			if err := runner.Run(ctx, cmd.Args, func(p ffmpeg.Progress) {
+				activity.RecordHeartbeat(ctx, currentTask)
+			}); err != nil {
+				return nil, a.recordError(ctx, input.JobID, domain.StageHLSSegmentation, domain.ErrCodeFFmpegFailed,
+					fmt.Errorf("tier=%s quality=%s: %w", tier, quality, err))
+			}
+
+			currentTask++
+			progress := (currentTask * 100) / totalTasks
+			a.updateProgress(ctx, input.JobID, domain.StageHLSSegmentation, progress)
+			activity.RecordHeartbeat(ctx, progress)
+
+			logger.Info("HLS segmentation complete",
+				zap.String("tier", string(tier)),
+				zap.String("quality", string(quality)))
+		}
+	}
+
+	// Generate multi-codec master playlist
+	masterContent := ffmpeg.GenerateMultiCodecMasterPlaylist(qualities, input.EnabledTiers, true)
+	masterPath := filepath.Join(hlsDir, "master.m3u8")
+	if err := os.WriteFile(masterPath, []byte(masterContent), 0644); err != nil {
+		return nil, fmt.Errorf("failed to write master playlist: %w", err)
+	}
+
+	a.updateProgress(ctx, input.JobID, domain.StageHLSSegmentation, 100)
+	logger.Info("multi-tier HLS segmentation complete",
+		zap.String("masterPlaylist", masterPath),
+		zap.Int("tiers", len(input.EnabledTiers)),
+		zap.Bool("encrypted", encryption != nil))
+
+	output := &HLSOutput{
+		MasterPlaylistPath: masterPath,
+		HLSDir:             hlsDir,
+		Encrypted:          encryption != nil,
+		MultiCodec:         true,
+		EnabledTiers:       input.EnabledTiers,
 	}
 	if encryption != nil {
 		output.KeyPath = encryption.KeyPath

@@ -17,6 +17,7 @@ type Config struct {
 	FFmpeg     FFmpegConfig
 	Thumbnails ThumbnailsConfig
 	HLS        HLSConfig
+	Encoding   EncodingConfig
 	DRM        DRMConfig
 	Retry      RetryConfig
 	Log        LogConfig
@@ -80,6 +81,20 @@ type HLSConfig struct {
 	SegmentDurationSec int
 	EnableEncryption   bool
 	KeyURL             string // URL template for key delivery, e.g., "https://example.com/keys/{job_id}/key"
+}
+
+// EncodingConfig holds multi-codec encoding configuration
+type EncodingConfig struct {
+	// Encoding tiers
+	EnableLegacyTier bool // H264/AAC/TS - maximum compatibility
+	EnableModernTier bool // H265/AAC/fMP4 - 40% bandwidth savings
+
+	// Container format for HLS segments
+	HLSSegmentType string // "ts" or "fmp4"
+
+	// H.265 specific settings
+	H265Preset string // CPU preset: ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+	H265CRF    int    // Constant Rate Factor (0-51, lower = better quality, 26 recommended)
 }
 
 // DRMConfig holds DRM configuration
@@ -162,6 +177,13 @@ func Load() (*Config, error) {
 			SegmentDurationSec: getEnvInt("HLS_SEGMENT_DURATION_SEC", 4),
 			EnableEncryption:   getEnvBool("HLS_ENABLE_ENCRYPTION", false),
 			KeyURL:             getEnv("HLS_KEY_URL", ""),
+		},
+		Encoding: EncodingConfig{
+			EnableLegacyTier: getEnvBool("ENCODING_LEGACY_TIER", true),
+			EnableModernTier: getEnvBool("ENCODING_MODERN_TIER", true),
+			HLSSegmentType:   getEnv("HLS_SEGMENT_TYPE", "fmp4"),
+			H265Preset:       getEnv("H265_PRESET", "medium"),
+			H265CRF:          getEnvInt("H265_CRF", 26),
 		},
 		DRM: DRMConfig{
 			Enabled:           getEnvBool("DRM_ENABLED", false),

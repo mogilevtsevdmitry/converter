@@ -183,8 +183,10 @@ func VideoConversionWorkflow(ctx workflow.Context, input VideoConversionWorkflow
 	logger.Info("Starting HLS segmentation")
 	var hlsOutput *activities.HLSOutput
 	err = workflow.ExecuteActivity(ctx, "SegmentHLS", activities.HLSInput{
-		JobID:       input.JobID,
-		OutputPaths: transcodeOutput.OutputPaths,
+		JobID:           input.JobID,
+		OutputPaths:     transcodeOutput.OutputPaths,
+		TierOutputPaths: transcodeOutput.TierOutputPaths,
+		EnabledTiers:    transcodeOutput.EnabledTiers,
 	}).Get(ctx, &hlsOutput)
 	if err != nil {
 		output.Status = domain.JobStatusFailed

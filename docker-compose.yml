@@ -42,12 +42,18 @@ services:
       - S3_SECRET_KEY=minioadmin
       - S3_BUCKET_OUTPUT=converted
       - WORKDIR_ROOT=/work
-      - MAX_PARALLEL_JOBS=2
-      - MAX_PARALLEL_FFMPEG=4
+      - MAX_PARALLEL_JOBS=1
+      - MAX_PARALLEL_FFMPEG=1
       - MAX_PARALLEL_UPLOADS=10
       - ENABLE_GPU=false
       - HLS_ENABLE_ENCRYPTION=false
       - HLS_KEY_URL=
+      # Multi-codec encoding (H.265 support)
+      - ENCODING_LEGACY_TIER=true
+      - ENCODING_MODERN_TIER=true
+      - HLS_SEGMENT_TYPE=fmp4
+      - H265_PRESET=slower
+      - H265_CRF=28
       # DRM Configuration
       - DRM_ENABLED=false
       - DRM_PROVIDER=widevine
@@ -80,8 +86,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 8G
+          cpus: '1.5'
+          memory: 4G
 
   postgres:
     image: postgres:16-alpine
